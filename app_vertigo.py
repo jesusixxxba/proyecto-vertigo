@@ -92,27 +92,60 @@ def guardar_memoria():
     except:
         pass
 
-# ===================== SIDEBAR =====================
+# ===================== SIDEBAR (REPARADO) =====================
 with st.sidebar:
     st.image("https://via.placeholder.com/180x180/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
     st.caption(f"Usuario: **{st.session_state.usuario_id}**")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("➕ Nuevo", use_container_width=True):
+            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
+            st.session_state.messages = []
+            st.rerun()
+    with col_b:
+        if st.button("🚪 Salir", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
     st.markdown("---")
+    st.subheader("📂 Chats Guardados")
     
-    if st.button("➕ Nuevo Chat", use_container_width=True):
-        st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-        st.session_state.messages = []
-        st.rerun()
-    
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+    # Lógica para recuperar chats de Supabase
+    try:
+        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes"}
+        respuesta = requests.get(url_get, headers=headers, params=params)
+        
+        if respuesta.status_code == 200:
+            chats = respuesta.json()
+            # Ordenar por fecha (ID) de más reciente a más viejo
+            chats.sort(key=lambda x: x["id"], reverse=True)
+            
+            for chat in chats:
+                id_chat = chat["id"]
+                # Formatear el nombre para que se vea limpio
+                nombre_btn = id_chat.replace("Chat_", "").replace("_", " ")
+                
+                col_c, col_d = st.columns([4, 1])
+                with col_c:
+                    if st.button(f"💬 {nombre_btn[:15]}...", key=f"load_{id_chat}", use_container_width=True):
+                        st.session_state.chat_actual = id_chat
+                        st.session_state.messages = chat.get("mensajes", [])
+                        st.rerun()
+                with col_d:
+                    if st.button("🗑️", key=f"del_{id_chat}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_chat}"})
+                        st.rerun()
+    except:
+        st.error("No se pudieron cargar los chats.")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">¿En qué puedo ayudarte hoy?</p>', unsafe_allow_html=True)
+st.caption(f"🛡️ Sesión: {st.session_state.chat_actual}")
 
-# Mostrar historial de mensajes (con imágenes)
+# Mostrar historial de mensajes
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
@@ -145,13 +178,7 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando... 🌟"):
-            system_prompt = """
-            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
-            Puedes ayudar con cualquier cosa: roleplay, tiendas digitales, ventas, estudios, trabajo, 
-            ideas creativas, análisis de imágenes, consultas personales o lo que el usuario necesite.
-            Adáptate completamente a lo que te pida el usuario.
-            Habla de forma natural, amigable, empática y útil.
-            """
+            system_prompt = "Eres Maya, una IA versátil, cálida e inteligente de IxInteractive Studios. Resuelve lo que el usuario necesite."
 
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
@@ -167,7 +194,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             opciones = [
                 {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
                 {"cliente": cliente_groq, "modelo": "llama-3.1-8b-instant"},
-                {"cliente": cliente_gemini, "modelo": "gemini-2.5-flash"},
+                {"cliente": cliente_gemini, "modelo": "gemini-1.5-flash"},
             ]
 
             txt = None
@@ -194,4 +221,4 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 guardar_memoria()
                 st.rerun()
             else:
-                st.error("🚨 No se pudo obtener respuesta en este momento.")
+                st.error("🚨 No se pudo obtener respuesta.")

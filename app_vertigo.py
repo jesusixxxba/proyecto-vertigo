@@ -161,7 +161,7 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
             # ¡EL NUEVO MOTOR GOOGLE GEMINI PRO!
             respuesta_nube = cliente_ia.chat.completions.create(
                 messages=mensajes_completos,
-                model="gemini-1.5-pro", 
+                model="gemini-2.5-pro"
             )
             
             full_response = respuesta_nube.choices[0].message.content

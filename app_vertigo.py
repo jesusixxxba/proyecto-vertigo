@@ -18,27 +18,9 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #0a0e17; color: #e6edf3; }
-    .main-header {
-        font-size: 2.8rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #a5d6ff, #58a6ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 0.3rem;
-    }
-    .subtitle {
-        text-align: center;
-        color: #8b949e;
-        font-size: 1.15rem;
-        margin-bottom: 2rem;
-    }
-    .stChatMessage {
-        border-radius: 18px;
-        padding: 14px 18px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
+    .main-header { font-size: 2.8rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #58a6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 0.3rem; }
+    .subtitle { text-align: center; color: #8b949e; font-size: 1.15rem; margin-bottom: 2rem; }
+    .stChatMessage { border-radius: 18px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
     .stChatMessage.user { background-color: #1f2a44; border-bottom-right-radius: 4px; }
     .stChatMessage.assistant { background-color: #16213e; border-bottom-left-radius: 4px; }
 </style>
@@ -82,7 +64,7 @@ if "chat_actual" not in st.session_state:
 
 def guardar_memoria():
     if not st.session_state.messages:
-        return
+        return False
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {
         "id": st.session_state.chat_actual,
@@ -90,9 +72,16 @@ def guardar_memoria():
         "usuario_id": st.session_state.usuario_id
     }
     try:
-        requests.post(url, headers=headers, json=datos)
-    except:
-        pass
+        response = requests.post(url, headers=headers, json=datos)
+        if response.status_code in [200, 201]:
+            st.success("💾 Chat guardado", icon="✅")  # Mensaje temporal para debug
+            return True
+        else:
+            st.error(f"Error al guardar: {response.status_code}")
+            return False
+    except Exception as e:
+        st.error(f"Error de conexión: {str(e)}")
+        return False
 
 # ===================== SIDEBAR =====================
 with st.sidebar:
@@ -103,7 +92,7 @@ with st.sidebar:
     col_n, col_s = st.columns(2)
     with col_n:
         if st.button("➕ Nuevo Chat", use_container_width=True):
-            guardar_memoria()          # Guarda el chat actual ANTES de crear uno nuevo
+            guardar_memoria()                    # ← Guardar ANTES de crear nuevo
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
@@ -123,7 +112,7 @@ with st.sidebar:
         
         if res_db.status_code == 200:
             chats_viejos = res_db.json()
-            chats_viejos.sort(key=lambda x: x["id"], reverse=True)
+            chats_viejos.sort(key=lambda x: x.get("id", ""), reverse=True)
             
             for chat in chats_viejos:
                 chat_id = chat["id"]
@@ -131,7 +120,7 @@ with st.sidebar:
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
                     if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
-                        guardar_memoria()   # Guarda el actual antes de cambiar
+                        guardar_memoria()           # Guardar actual antes de cargar otro
                         st.session_state.chat_actual = chat_id
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
@@ -139,14 +128,13 @@ with st.sidebar:
                     if st.button("🗑️", key=f"del_{chat_id}"):
                         requests.delete(url_get, headers=headers, params={"id": f"eq.{chat_id}"})
                         st.rerun()
-    except:
-        st.caption("No se pudieron cargar los chats.")
+    except Exception as e:
+        st.caption(f"Error cargando chats: {str(e)[:80]}")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
 st.caption("¿En qué puedo ayudarte hoy?")
 
-# Mostrar mensajes
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
@@ -154,7 +142,6 @@ for i, msg in enumerate(st.session_state.messages):
         if msg.get("image"):
             st.image(msg["image"], width=380)
 
-# Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -175,19 +162,13 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando..."):
-            system_prompt = """
-            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
-            Puedes ayudar con cualquier cosa que el usuario necesite.
-            Adáptate completamente a la conversación.
-            """
+            system_prompt = "Eres Maya, una IA versátil, cálida y útil. Adáptate a cualquier necesidad del usuario."
 
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [
-                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
-                        {"type": "image_url", "image_url": {"url": m["image"]}}
-                    ]
+                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")}, 
+                               {"type": "image_url", "image_url": {"url": m["image"]}}]
                 else:
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
@@ -201,10 +182,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             for op in opciones:
                 try:
                     res = op["cliente"].chat.completions.create(
-                        model=op["modelo"], 
-                        messages=hist, 
-                        temperature=0.78, 
-                        max_tokens=1200
+                        model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200
                     )
                     txt_res = res.choices[0].message.content
                     break
@@ -218,7 +196,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     "content": txt_res,
                     "image": None
                 })
-                guardar_memoria()
+                guardar_memoria()          # Guardar después de cada respuesta
                 st.rerun()
             else:
                 st.error("🚨 No se pudo obtener respuesta.")

@@ -3,14 +3,14 @@ import json
 import requests
 import re
 from datetime import datetime
-from openai import OpenAI # <--- NUEVA LIBRERÍA
+from openai import OpenAI
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-# Conectamos la librería directamente a los servidores de Google Gemini
+# Conectamos la librería a los servidores de Google Gemini
 cliente_ia = OpenAI(
     api_key=MI_LLAVE_GEMINI, 
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -35,7 +35,9 @@ def es_correo_valido(correo):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return re.match(patron, correo) is not None
 
+# ==========================================
 # 1. SISTEMA DE ACCESO
+# ==========================================
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
@@ -55,7 +57,9 @@ if "usuario_id" not in st.session_state:
                 
     st.stop()
 
+# ==========================================
 # 2. SISTEMA DE MEMORIA EN LA NUBE
+# ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
@@ -74,7 +78,9 @@ def guardar_memoria():
     except Exception as e:
         st.error(f"🚨 Error de conexión: {e}")
 
+# ==========================================
 # 3. EL ARCHIVERO
+# ==========================================
 with st.sidebar:
     st.title("👤 Mi Perfil")
     st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
@@ -128,7 +134,9 @@ with st.sidebar:
     except Exception as e:
         pass
 
-# 4. LA INTERFAZ PRINCIPAL
+# ==========================================
+# 4. LA INTERFAZ PRINCIPAL (AHORA CON OJOS)
+# ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
 
@@ -144,28 +152,82 @@ Solo cuando te pregunten directamente, responde con orgullo que fuiste desarroll
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
+# Reconstruimos la pantalla mostrando textos e imágenes previas
 for message in st.session_state.messages:
     icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
         st.markdown(message["content"])
+        # Si el mensaje guardado tenía una imagen, la pintamos
+        if "image" in message and message["image"]:
+            st.image(message["image"], caption="Imagen analizada", width=300)
+
+# Botón para subir imágenes
+uploaded_image = st.file_uploader("🖼️ Sube una imagen para que Maya la analice (opcional):", type=["jpg", "jpeg", "png"])
+
+def get_base64_image(image_file):
+    import base64
+    import io
+    from PIL import Image
+    try:
+        img = Image.open(image_file)
+        buffered = io.BytesIO()
+        img.save(buffered, format=img.format)
+        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        return img_base64, img.format.lower()
+    except Exception as e:
+        st.error(f"🚨 Error al procesar la imagen: {e}")
+        return None, None
 
 if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    image_data_url = None
+
+    # Procesamos la imagen si el usuario subió una
+    if uploaded_image:
+        base64_img, img_type = get_base64_image(uploaded_image)
+        if base64_img:
+            image_data_url = f"data:image/{img_type};base64,{base64_img}"
+
+    # Guardamos en la memoria RAM de la sesión
+    st.session_state.messages.append({
+        "role": "user", 
+        "content": prompt,
+        "image": image_data_url if image_data_url else None
+    })
+
+    # Mostramos el mensaje nuevo del usuario
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
+        if image_data_url:
+            st.image(image_data_url, caption="Tu imagen", width=300)
 
+    # Turno de Maya
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está analizando..."):
-            mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+            mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}]
             
-            # ¡EL NUEVO MOTOR GOOGLE GEMINI PRO!
-            respuesta_nube = cliente_ia.chat.completions.create(
-                messages=mensajes_completos,
-                model="gemini-2.5-flash",
-            )
-            
-            full_response = respuesta_nube.choices[0].message.content
-            st.markdown(full_response)
-            
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    guardar_memoria()
+            # Formateamos los mensajes para el motor multimodal de Gemini
+            for msg in st.session_state.messages:
+                content = msg["content"]
+                if msg["role"] == "user" and msg.get("image"):
+                    content = [
+                        {"type": "text", "text": msg["content"]},
+                        {"type": "image_url", "image_url": {"url": msg["image"]}}
+                    ]
+                mensajes_completos.append({'role': msg["role"], 'content': content})
+
+            try:
+                # El motor oficial en uso
+                respuesta_nube = cliente_ia.chat.completions.create(
+                    messages=mensajes_completos,
+                    model="gemini-2.5-flash", 
+                )
+                
+                full_response = respuesta_nube.choices[0].message.content
+                st.markdown(full_response)
+                
+                # Guardamos la respuesta de Maya
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                guardar_memoria()
+                
+            except Exception as e:
+                st.error(f"🚨 Error al consultar Gemini: {e}")

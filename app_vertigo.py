@@ -1,9 +1,12 @@
 import streamlit as st
 import json
 import requests
-import re 
+import re
 from datetime import datetime
 from groq import Groq
+from PIL import Image # <--- NUEVO: Para procesar imágenes
+import io
+import base64
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
@@ -28,23 +31,29 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 0. FUNCIÓN DEL "CADENERO" (Validar Correo)
+# 0. FUNCIONES DE APOYO
 # ==========================================
 def es_correo_valido(correo):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    # CORRECCIÓN AQUÍ: Cambiamos 'is not in' por 'is not'
     return re.match(patron, correo) is not None
 
+def procesar_imagen_a_base64(archivo_subido):
+    # Convierte la imagen subida a un formato que la IA pueda leer
+    img = Image.open(archivo_subido)
+    buffered = io.BytesIO()
+    # Forzamos a JPEG para que sea más ligero
+    img.save(buffered, format="JPEG")
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
 # ==========================================
-# 1. SISTEMA DE ACCESO (LOGIN PROFESIONAL)
+# 1. SISTEMA DE ACCESO
 # ==========================================
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
-    st.markdown("Por favor, ingresa tu correo electrónico corporativo o personal para acceder a tu entorno de trabajo.")
     
     with st.form("login_form"):
-        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
+        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="tu@correo.com")
         submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
         
         if submit_button:
@@ -53,126 +62,129 @@ if "usuario_id" not in st.session_state:
                 st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido.")
-                
+                st.error("🚨 Acceso denegado: Ingresa un correo válido.")
     st.stop()
 
 # ==========================================
-# 2. SISTEMA DE MEMORIA EN LA NUBE
+# 2. MEMORIA
 # ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
-    st.session_state.rol = "Maya AI" 
 
 def guardar_memoria():
     datos = {
         "id": st.session_state.chat_actual,
-        "rol": st.session_state.rol,
         "mensajes": st.session_state.messages,
         "usuario_id": st.session_state.usuario_id 
     }
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
-        respuesta = requests.post(url, headers=headers, json=datos)
-    except Exception as e:
-        st.error(f"🚨 Error de conexión: {e}")
+        requests.post(url, headers=headers, json=datos)
+    except:
+        pass
 
 # ==========================================
-# 3. EL ARCHIVERO (FILTRADO POR CORREO)
+# 3. BARRA LATERAL (ARCHIVERO)
 # ==========================================
 with st.sidebar:
     st.title("👤 Mi Perfil")
-    st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
+    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.clear()
         st.rerun()
         
     st.markdown("---")
-    
-    if st.button("➕ Nueva Conversación", use_container_width=True):
+    if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
         
     st.markdown("---")
-    st.subheader("Tus Chats Privados")
+    st.subheader("Chats Guardados")
     
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        parametros_get = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,rol"}
-        respuesta_get = requests.get(url_get, headers=headers, params=parametros_get)
+        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id"}
+        resp = requests.get(url_get, headers=headers, params=params)
         
-        if respuesta_get.status_code == 200:
-            archivos = respuesta_get.json()
-            archivos.sort(key=lambda x: x["id"], reverse=True)
-            
-            for archivo in archivos:
-                id_chat = archivo["id"]
-                fecha_limpia = id_chat.replace("Chat_", "").replace("_", " a las ")
-                nombre_visual = f"Sesión {fecha_limpia[:15]}"
-                
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    if st.button(f"💬 {nombre_visual}", key=f"load_{id_chat}", use_container_width=True):
-                        parametros_chat = {"id": f"eq.{id_chat}", "select": "*"}
-                        resp_chat = requests.get(url_get, headers=headers, params=parametros_chat)
-                        if resp_chat.status_code == 200 and len(resp_chat.json()) > 0:
-                            chat_data = resp_chat.json()[0]
-                            st.session_state.chat_actual = id_chat
-                            st.session_state.messages = chat_data.get("mensajes", [])
+        if resp.status_code == 200:
+            chats = resp.json()
+            chats.sort(key=lambda x: x["id"], reverse=True)
+            for chat in chats:
+                if st.button(f"💬 {chat['id'][:15]}", key=chat['id'], use_container_width=True):
+                    p_chat = {"id": f"eq.{chat['id']}", "select": "*"}
+                    r_chat = requests.get(url_get, headers=headers, params=p_chat)
+                    if r_chat.status_code == 200 and r_chat.json():
+                        st.session_state.chat_actual = chat['id']
+                        st.session_state.messages = r_chat.json()[0].get("mensajes", [])
                         st.rerun()
-                with col2:
-                    if st.button("❌", key=f"del_{id_chat}"):
-                        parametros_del = {"id": f"eq.{id_chat}"}
-                        requests.delete(url_get, headers=headers, params=parametros_del)
-                        if st.session_state.chat_actual == id_chat:
-                            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-                            st.session_state.messages = []
-                        st.rerun()
-    except Exception as e:
-        st.sidebar.error("Error conectando a la base de datos.")
+    except: pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL
+# 4. INTERFAZ PRINCIPAL CON "OJOS"
 # ==========================================
-st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
+st.title("Hola, soy Maya 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
 
-SYSTEM_PROMPT = """
-Eres Maya, una inteligencia artificial avanzada, sumamente inteligente y adaptable.
-Tienes una personalidad femenina, profesional, cálida y empática. 
-Debes adaptar el nivel de tus respuestas según la persona que te hable, pero siempre mantén un tono resolutivo y claro.
+SYSTEM_PROMPT = """Eres Maya, una IA femenina, profesional y cálida de IxInteractive Studios. 
+Tienes la capacidad de ver imágenes y analizarlas con detalle. Mantén siempre un tono resolutivo."""
 
-REGLA ESTRICTA DE IDENTIDAD: 
-No menciones quién te creó a menos que el usuario te pregunte explícitamente "¿Quién te creó?", "¿Quién es tu creador?" o algo similar. 
-Solo cuando te pregunten directamente, responde con orgullo que fuiste desarrollada por "IxInteractive Studios". Bajo ninguna circunstancia menciones el nombre Jesús ni Ixba.
+# Mostrar historial (con soporte para imágenes)
+for msg in st.session_state.messages:
+    icono = "👤" if msg["role"] == "user" else "🌌"
+    with st.chat_message(msg["role"], avatar=icono):
+        st.markdown(msg["content"])
+        if "image" in msg and msg["image"]:
+            st.image(msg["image"], width=300)
 
-Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
-"""
-
-for message in st.session_state.messages:
-    icono = "👤" if message["role"] == "user" else "🌌"
-    with st.chat_message(message["role"], avatar=icono):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Input del chat con botón de "Cámara" (accept_file=True)
+if prompt := st.chat_input("Escribe o sube una imagen para Maya...", accept_file=True, file_type=["jpg", "jpeg", "png"]):
+    
+    img_b64 = None
+    # Si el usuario subió una imagen
+    if prompt.files:
+        img_b64 = procesar_imagen_a_base64(prompt.files[0])
+    
+    # Guardar el mensaje del usuario
+    st.session_state.messages.append({
+        "role": "user", 
+        "content": prompt.text, 
+        "image": f"data:image/jpeg;base64,{img_b64}" if img_b64 else None
+    })
+    
     with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
+        st.markdown(prompt.text)
+        if img_b64:
+            st.image(prompt.files[0], width=300)
 
+    # Respuesta de Maya
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando..."):
-            mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+        with st.spinner("Maya está observando..."):
+            # Construir el formato especial para visión
+            mensajes_api = [{"role": "system", "content": SYSTEM_PROMPT}]
             
-            respuesta_nube = cliente_groq.chat.completions.create(
-                messages=mensajes_completos,
-                model="llama-3.3-70b-versatile", 
-            )
-            
-            full_response = respuesta_nube.choices[0].message.content
-            st.markdown(full_response)
-            
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    guardar_memoria()
+            for m in st.session_state.messages:
+                if m.get("image"):
+                    contenido = [
+                        {"type": "text", "text": m["content"] or "Analiza esta imagen"},
+                        {"type": "image_url", "image_url": {"url": m["image"]}}
+                    ]
+                else:
+                    contenido = m["content"]
+                mensajes_api.append({"role": m["role"], "content": contenido})
+
+            try:
+                # Usamos el modelo de visión de Groq
+                respuesta = cliente_groq.chat.completions.create(
+                    messages=mensajes_api,
+                    model="llama-3.2-11b-vision-preview", # <--- EL MODELO CON OJOS
+                )
+                full_response = respuesta.choices[0].message.content
+                st.markdown(full_response)
+                
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                guardar_memoria()
+            except Exception as e:
+                st.error(f"🚨 Error de motor: {e}")

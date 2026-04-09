@@ -1,5 +1,4 @@
 import streamlit as st
-import json
 import requests
 import re
 from datetime import datetime
@@ -16,7 +15,7 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
-# Creamos los clientes
+# Clientes de IA
 cliente_groq = OpenAI(api_key=MI_LLAVE_GROQ, base_url="https://api.groq.com/openai/v1")
 cliente_gemini = OpenAI(api_key=MI_LLAVE_GEMINI, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
@@ -27,23 +26,36 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌")
-st.markdown(
-    "<style>.stApp { background-color: #0d1117; color: #c9d1d9; } "
-    ".stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; margin-bottom: 10px; }</style>",
-    unsafe_allow_html=True
-)
+st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="centered")
 
-# --- 2. ACCESO Y MEMORIA ---
+# Estilo moderno oscuro
+st.markdown("""
+<style>
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .stChatMessage { 
+        background-color: #161b22; 
+        border: 1px solid #30363d; 
+        border-radius: 12px; 
+        padding: 16px; 
+        margin-bottom: 12px; 
+    }
+    .stChatMessage.user { border-left: 4px solid #58a6ff; }
+    .stChatMessage.assistant { border-left: 4px solid #a5d6ff; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 2. ACCESO SIMPLE POR CORREO ---
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
     with st.form("login"):
-        correo = st.text_input("✉️ Correo:", placeholder="tu@correo.com")
-        if st.form_submit_button("Entrar"):
+        correo = st.text_input("✉️ Ingresa tu correo:", placeholder="tu@correo.com")
+        if st.form_submit_button("Entrar a Maya"):
             if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo.strip()):
                 st.session_state.usuario_id = correo.strip().lower()
                 st.rerun()
+            else:
+                st.error("Por favor ingresa un correo válido")
     st.stop()
 
 if "chat_actual" not in st.session_state:
@@ -65,10 +77,12 @@ def guardar_memoria():
 # --- 3. BARRA LATERAL ---
 with st.sidebar:
     st.title("👤 Perfil")
-    st.caption(f"ID: {st.session_state.usuario_id}")
+    st.caption(f"Usuario: {st.session_state.usuario_id}")
+    
     if st.button("🚪 Salir", use_container_width=True):
         st.session_state.clear()
         st.rerun()
+    
     st.markdown("---")
     if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
@@ -77,24 +91,35 @@ with st.sidebar:
 
 # --- 4. CHAT PRINCIPAL ---
 st.title("Hola, soy Maya 🌌")
+st.caption("Tu asistente de roleplay e IxInteractive Studios")
 
+# Mostrar historial de mensajes
 for i, msg in enumerate(st.session_state.messages):
-    with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
+    avatar = "👤" if msg["role"] == "user" else "🌌"
+    with st.chat_message(msg["role"], avatar=avatar):
         if msg.get("content"):
             st.markdown(msg["content"])
         if msg.get("image"):
-            st.image(msg["image"], width=300)
+            st.image(msg["image"], width=320)
+        
+        # Botón de audio mejorado
         if msg.get("audio"):
-            html = f"""<html><body style='margin:0; background:transparent;'>
-            <audio id='aud_{i}' src='data:audio/mp3;base64,{msg['audio']}'></audio>
-            <button onclick="var a=document.getElementById('aud_{i}'); 
-            if(a.paused){{a.play();this.innerHTML='⏸️';}}else{{a.pause();this.innerHTML='▶️';}}" 
-            style='background:#30363d;border:1px solid #8b949e;color:white;padding:5px 15px;border-radius:20px;cursor:pointer;'>
-            ▶️ Escuchar</button></body></html>"""
-            components.html(html, height=45)
+            audio_html = f"""
+            <div style="margin: 10px 0;">
+                <audio id="aud_{i}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
+                <button onclick="var a = document.getElementById('aud_{i}'); 
+                if(a.paused){{a.play(); this.textContent='⏸️ Pausar';}} 
+                else {{a.pause(); this.textContent='▶️ Escuchar';}}" 
+                style="background:#21262d; color:white; border:1px solid #8b949e; padding:8px 18px; 
+                border-radius:20px; cursor:pointer; font-size:14px;">
+                ▶️ Escuchar
+                </button>
+            </div>
+            """
+            components.html(audio_html, height=55)
 
 # --- ENTRADA DEL USUARIO ---
-if prompt := st.chat_input("Escribe o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
+if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     texto_usuario = prompt.text if hasattr(prompt, "text") else str(prompt)
 
@@ -104,8 +129,8 @@ if prompt := st.chat_input("Escribe o sube una imagen...", accept_file=True, fil
             buf = io.BytesIO()
             img.save(buf, format=img.format or "PNG")
             img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
-        except Exception as e:
-            st.error(f"Error al procesar la imagen: {e}")
+        except:
+            st.error("No se pudo procesar la imagen")
 
     st.session_state.messages.append({
         "role": "user",
@@ -114,79 +139,85 @@ if prompt := st.chat_input("Escribe o sube una imagen...", accept_file=True, fil
     })
     st.rerun()
 
-# --- LÓGICA DE RESPUESTA CON FALLBACK MEJORADO ---
+# --- LÓGICA DE RESPUESTA CON FALLBACK ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya analizando..."):
-            # System prompt mejorado
-            system_prompt = (
-                "Eres Maya, una IA amigable, profesional y creativa de IxInteractive Studios. "
-                "Ayudas con roleplay inmersivo, atención al cliente, ventas y tiendas digitales. "
-                "Responde con claridad, empatía y entusiasmo cuando corresponda."
-            )
+        with st.spinner("Maya está pensando..."):
+            # System Prompt mejorado
+            system_prompt = """
+            Eres Maya, una IA cálida, inteligente y creativa de IxInteractive Studios.
+            Especializada en roleplay inmersivo y apoyo a tiendas digitales.
+            Habla de forma natural, amigable y profesional. Sé empática y entusiasta cuando corresponda.
+            """
 
             # Construir historial
             hist = [{"role": "system", "content": system_prompt}]
-
             for m in st.session_state.messages:
                 if m.get("image"):
                     content = [
-                        {"type": "text", "text": m["content"] or "Analiza esta imagen"},
+                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
                         {"type": "image_url", "image_url": {"url": m["image"]}}
                     ]
                 else:
-                    content = m["content"] or ""
+                    content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
-            # Lista de modelos con fallback (ordenados por prioridad)
+            # Modelos en orden de prioridad
             opciones = [
-                # Groq - Texto rápido y estable (primero)
                 {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
                 {"cliente": cliente_groq, "modelo": "llama-3.1-8b-instant"},
-                
-                # Groq Vision (si hay imagen)
                 {"cliente": cliente_groq, "modelo": "llama-3.2-11b-vision-preview"},
-                {"cliente": cliente_groq, "modelo": "llama-3.2-90b-vision-preview"},
-                
-                # Gemini (cuando tengas créditos)
                 {"cliente": cliente_gemini, "modelo": "gemini-2.5-flash"},
                 {"cliente": cliente_gemini, "modelo": "gemini-1.5-flash"},
             ]
 
             txt = None
-            error_msgs = []
-
             for opcion in opciones:
                 try:
                     res = opcion["cliente"].chat.completions.create(
                         model=opcion["modelo"],
                         messages=hist,
                         temperature=0.75,
-                        max_tokens=1200
+                        max_tokens=1100
                     )
                     txt = res.choices[0].message.content
-                    st.caption(f"✅ Usando modelo: {opcion['modelo']}")
                     break
-                except Exception as e:
-                    error_msgs.append(f"{opcion['modelo']}: {str(e)[:80]}...")
+                except:
                     continue
 
             if txt:
                 st.markdown(txt)
 
-                # Generación de audio con ElevenLabs
+                # === GENERACIÓN DE AUDIO CON ELEVENLABS ===
                 aud_b64 = None
                 try:
+                    clean_text = txt.replace("**", "").replace("*", "").strip()
                     v_res = requests.post(
                         "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL",
-                        json={"text": txt.replace("*", ""), "model_id": "eleven_multilingual_v2"},
-                        headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"}
+                        json={
+                            "text": clean_text,
+                            "model_id": "eleven_multilingual_v2",
+                            "voice_settings": {
+                                "stability": 0.75,
+                                "similarity_boost": 0.85,
+                                "style": 0.1
+                            }
+                        },
+                        headers={
+                            "xi-api-key": MI_LLAVE_ELEVENLABS,
+                            "Content-Type": "application/json"
+                        },
+                        timeout=12
                     )
+                    
                     if v_res.status_code == 200:
                         aud_b64 = base64.b64encode(v_res.content).decode()
+                    else:
+                        st.caption("⚠️ Audio no disponible en este momento")
                 except:
-                    pass
+                    st.caption("⚠️ No se pudo generar el audio")
 
+                # Guardar respuesta
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": txt,
@@ -194,8 +225,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 })
                 guardar_memoria()
                 st.rerun()
+
             else:
-                st.error("🚨 Todos los motores están fallando en este momento.")
-                if error_msgs:
-                    st.caption("Detalles: " + " | ".join(error_msgs))
-                st.info("Consejo: Revisa tus créditos en Gemini o espera unos minutos para Groq.")
+                st.error("🚨 No se pudo conectar con ningún modelo en este momento. Intenta de nuevo.")

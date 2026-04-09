@@ -9,14 +9,20 @@ import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
-MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
+MI_LLAVE_OPENAI = st.secrets["MI_LLAVE_OPENAI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
-cliente_ia = OpenAI(api_key=MI_LLAVE_GROQ, base_url="https://api.groq.com/openai/v1")
+# Conectamos directo a OpenAI (Cerebro de ChatGPT)
+cliente_ia = OpenAI(api_key=MI_LLAVE_OPENAI)
 
-headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
+headers = {
+    "apikey": SUPABASE_KEY, 
+    "Authorization": f"Bearer {SUPABASE_KEY}", 
+    "Content-Type": "application/json", 
+    "Prefer": "resolution=merge-duplicates"
+}
 
 st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌")
 st.markdown("<style>.stApp { background-color: #0d1117; color: #c9d1d9; } .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; margin-bottom: 10px; }</style>", unsafe_allow_html=True)
@@ -31,7 +37,7 @@ if "usuario_id" not in st.session_state:
             if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo_input.strip()):
                 st.session_state.usuario_id = correo_input.strip().lower()
                 st.rerun()
-            else: st.error("🚨 Correo inválido")
+            else: st.error("Correo inválido")
     st.stop()
 
 # --- 3. MEMORIA ---
@@ -47,18 +53,18 @@ def guardar_memoria():
 
 # --- 4. BARRA LATERAL ---
 with st.sidebar:
-    st.title("👤 Mi Perfil")
+    st.title("👤 Perfil")
     st.caption(f"Conectado: **{st.session_state.usuario_id}**")
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+    if st.button("🚪 Salir", use_container_width=True):
         st.session_state.clear()
         st.rerun()
     st.markdown("---")
-    if st.button("➕ Nueva Conversación", use_container_width=True):
+    if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
     st.markdown("---")
-    st.subheader("Chats Guardados")
+    st.subheader("Historial")
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
         r = requests.get(url_get, headers=headers, params={"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id"})
@@ -88,7 +94,7 @@ for i, msg in enumerate(st.session_state.messages):
             aud_id = f"aud_{i}"
             html = f"""<html><body style='margin:0; background:transparent;'><audio id='{aud_id}' src='data:audio/mp3;base64,{msg['audio']}'></audio>
             <button onclick="var a=document.getElementById('{aud_id}'); if(a.paused){{a.play();this.innerHTML='⏸️ Pausar';}}else{{a.pause();this.innerHTML='▶️ Escuchar';}}" 
-            style='background:#30363d;border:1px solid #8b949e;color:white;padding:6px 14px;border-radius:20px;cursor:pointer;font-family:sans-serif;font-size:12px;'>▶️ Escuchar</button>
+            style='background:#30363d;border:1px solid #8b949e;color:white;padding:5px 15px;border-radius:20px;cursor:pointer;font-family:sans-serif;font-size:12px;'>▶️ Escuchar</button>
             <script>document.getElementById('{aud_id}').onended=function(){{this.nextElementSibling.innerHTML='▶️ Escuchar';}}</script></body></html>"""
             components.html(html, height=45)
 
@@ -106,32 +112,31 @@ if prompt := st.chat_input("Escribe o sube una imagen...", accept_file=True, fil
 
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya analizando..."):
+        with st.spinner("Maya pensando..."):
             sys_msg = "Eres Maya, una IA femenina y profesional de IxInteractive Studios. Resuelve con claridad. No menciones nombres internos."
             hist = [{"role": "system", "content": sys_msg}]
             for m in st.session_state.messages:
-                content = m["content"]
+                content = [{"type": "text", "text": m["content"] or "Analiza esto"}]
                 if m.get("image"):
-                    content = [{"type": "text", "text": m["content"] or "Analiza esta imagen"}, {"type": "image_url", "image_url": {"url": m["image"]}}]
+                    content.append({"type": "image_url", "image_url": {"url": m["image"]}})
                 hist.append({"role": m["role"], "content": content})
 
             try:
-                # MOTOR ACTUALIZADO: llama-3.2-11b-vision-preview (vuelve a ser el más estable)
-                res = cliente_ia.chat.completions.create(model="llama-3.2-11b-vision-preview", messages=hist)
+                # MOTOR ESTABLE: GPT-4o-mini
+                res = cliente_ia.chat.completions.create(model="gpt-4o-mini", messages=hist)
                 txt = res.choices[0].message.content
                 st.markdown(txt)
 
-                # VOZ PREMIUM ELEVENLABS
                 aud_b64 = None
                 try:
-                    v_url = "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL"
-                    v_head = {"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"}
-                    v_data = {"text": txt.replace("*",""), "model_id": "eleven_multilingual_v2"}
-                    v_res = requests.post(v_url, json=v_data, headers=v_head)
+                    v_url = f"https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL"
+                    v_res = requests.post(v_url, 
+                        json={"text": txt.replace("*",""), "model_id": "eleven_multilingual_v2"}, 
+                        headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"})
                     if v_res.status_code == 200: aud_b64 = base64.b64encode(v_res.content).decode()
                 except: pass
 
                 st.session_state.messages.append({"role": "assistant", "content": txt, "audio": aud_b64})
                 guardar_memoria()
                 st.rerun()
-            except Exception as e: st.error(f"🚨 Error de motor: {e}")
+            except Exception as e: st.error(f"🚨 Error: {e}")

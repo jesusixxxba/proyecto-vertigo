@@ -11,7 +11,6 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 
-# Cabeceras universales para hablar con Supabase directamente (Vía REST)
 headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -27,39 +26,70 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. SISTEMA DE MEMORIA EN LA NUBE
+# ==========================================
+# 1. SISTEMA DE ACCESO (LOGIN PRIVADO)
+# ==========================================
+if "usuario_id" not in st.session_state:
+    st.title("🔐 Acceso a Maya")
+    st.markdown("Por favor, identifícate para acceder a tu espacio privado.")
+    
+    usuario_input = st.text_input("Nombre de usuario:")
+    if st.button("Entrar", use_container_width=True):
+        if usuario_input.strip() != "":
+            # Guardamos el usuario en minúsculas y sin espacios extra para evitar errores
+            st.session_state.usuario_id = usuario_input.strip().lower()
+            st.rerun()
+        else:
+            st.warning("Por favor, ingresa un nombre válido.")
+    
+    # st.stop() detiene la ejecución del código aquí si no hay usuario
+    st.stop()
+
+# ==========================================
+# 2. SISTEMA DE MEMORIA EN LA NUBE (INDIVIDUAL)
+# ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
-    st.session_state.rol = "Maya AI" # Se mantiene por compatibilidad con la base de datos vieja
+    st.session_state.rol = "Maya AI" 
 
 def guardar_memoria():
     datos = {
         "id": st.session_state.chat_actual,
         "rol": st.session_state.rol,
-        "mensajes": st.session_state.messages
+        "mensajes": st.session_state.messages,
+        "usuario_id": st.session_state.usuario_id  # <--- AQUÍ GUARDAMOS AL DUEÑO DEL CHAT
     }
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
         respuesta = requests.post(url, headers=headers, json=datos)
         if respuesta.status_code not in [200, 201, 204]:
-            st.error(f"🚨 Error de Supabase al guardar: {respuesta.text}")
+            st.error(f"🚨 Error al guardar: {respuesta.text}")
     except Exception as e:
         st.error(f"🚨 Error de conexión: {e}")
 
-# 3. EL ARCHIVERO
+# ==========================================
+# 3. EL ARCHIVERO (FILTRADO POR USUARIO)
+# ==========================================
 with st.sidebar:
-    st.title("🗄️ Archivo de Sesiones")
+    st.title(f"👤 Perfil: {st.session_state.usuario_id.capitalize()}")
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        del st.session_state["usuario_id"]
+        st.rerun()
+        
+    st.markdown("---")
+    
     if st.button("➕ Nueva Conversación", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
         
     st.markdown("---")
-    st.subheader("Chats Guardados")
+    st.subheader("Tus Chats Privados")
     
     try:
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?select=id,rol"
+        # AQUÍ ESTÁ LA MAGIA: Le pedimos a Supabase SOLO los chats donde usuario_id sea igual al usuario actual
+        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?usuario_id=eq.{st.session_state.usuario_id}&select=id,rol"
         respuesta_get = requests.get(url_get, headers=headers)
         
         if respuesta_get.status_code == 200:
@@ -68,7 +98,6 @@ with st.sidebar:
             
             for archivo in archivos:
                 id_chat = archivo["id"]
-                # Ajuste visual para el archivero
                 fecha_limpia = id_chat.replace("Chat_", "").replace("_", " a las ")
                 nombre_visual = f"Sesión {fecha_limpia[:15]}"
                 
@@ -91,14 +120,16 @@ with st.sidebar:
                             st.session_state.messages = []
                         st.rerun()
         else:
-            st.sidebar.warning("Aún no hay chats guardados.")
+            st.sidebar.warning("Aún no tienes chats guardados.")
     except Exception as e:
         st.sidebar.error("Error conectando a la base de datos.")
 
+# ==========================================
+# 4. LA INTERFAZ PRINCIPAL
+# ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
-st.caption(f"🛡️ Proyecto Maya | ID: {st.session_state.chat_actual}")
+st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
 
-# --- EL ADN DE MAYA (Regla Cero) ---
 SYSTEM_PROMPT = """
 Eres Maya, una inteligencia artificial avanzada, sumamente inteligente y adaptable.
 Tienes una personalidad femenina, profesional, cálida y empática. 
@@ -116,7 +147,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar=icono):
         st.markdown(message["content"])
 
-# 5. EL CHAT PRINCIPAL
 if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):

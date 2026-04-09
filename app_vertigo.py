@@ -6,7 +6,6 @@ from openai import OpenAI
 import io
 import base64
 from PIL import Image
-import streamlit.components.v1 as components
 
 # ===================== CONFIGURACIÓN =====================
 st.set_page_config(
@@ -82,6 +81,8 @@ if "chat_actual" not in st.session_state:
     st.session_state.messages = []
 
 def guardar_memoria():
+    if not st.session_state.messages:
+        return
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {
         "id": st.session_state.chat_actual,
@@ -102,11 +103,13 @@ with st.sidebar:
     col_n, col_s = st.columns(2)
     with col_n:
         if st.button("➕ Nuevo Chat", use_container_width=True):
+            **guardar_memoria()**  # ← GUARDA el chat actual ANTES de crear uno nuevo
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            guardar_memoria()
             st.session_state.clear()
             st.rerun()
     
@@ -128,6 +131,7 @@ with st.sidebar:
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
                     if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
+                        guardar_memoria()  # Guarda el actual antes de cambiar
                         st.session_state.chat_actual = chat_id
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
@@ -138,7 +142,7 @@ with st.sidebar:
     except:
         st.caption("No se pudieron cargar los chats.")
 
-# ===================== CHAT =====================
+# ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
 st.caption("¿En qué puedo ayudarte hoy?")
 
@@ -165,17 +169,23 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
 
-# Respuesta
+# ===================== RESPUESTA =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando..."):
-            system_prompt = "Eres Maya, una IA versátil, cálida y útil. Adáptate a cualquier necesidad del usuario."
+            system_prompt = """
+            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
+            Puedes ayudar con cualquier cosa que el usuario necesite.
+            Adáptate completamente a la conversación.
+            """
 
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")}, 
-                               {"type": "image_url", "image_url": {"url": m["image"]}}]
+                    content = [
+                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                        {"type": "image_url", "image_url": {"url": m["image"]}}
+                    ]
                 else:
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
@@ -188,7 +198,9 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             txt_res = None
             for op in opciones:
                 try:
-                    res = op["cliente"].chat.completions.create(model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200)
+                    res = op["cliente"].chat.completions.create(
+                        model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200
+                    )
                     txt_res = res.choices[0].message.content
                     break
                 except:
@@ -196,7 +208,11 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             if txt_res:
                 st.markdown(txt_res)
-                st.session_state.messages.append({"role": "assistant", "content": txt_res, "image": None})
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": txt_res,
+                    "image": None
+                })
                 guardar_memoria()
                 st.rerun()
             else:

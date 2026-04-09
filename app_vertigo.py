@@ -68,7 +68,7 @@ with st.sidebar:
             
             for archivo in archivos:
                 id_chat = archivo["id"]
-                # Ajuste visual para el archivero (como ya no hay roles, mostramos el ID o fecha)
+                # Ajuste visual para el archivero
                 fecha_limpia = id_chat.replace("Chat_", "").replace("_", " a las ")
                 nombre_visual = f"Sesión {fecha_limpia[:15]}"
                 
@@ -101,9 +101,13 @@ st.caption(f"🛡️ Proyecto Maya | ID: {st.session_state.chat_actual}")
 # --- EL ADN DE MAYA (Regla Cero) ---
 SYSTEM_PROMPT = """
 Eres Maya, una inteligencia artificial avanzada, sumamente inteligente y adaptable.
-Tu creador es Jesús (también conocido como Jesús Ixba o jesus.ixba). Si alguien te pregunta quién te creó, debes mencionar con orgullo a Jesús.
 Tienes una personalidad femenina, profesional, cálida y empática. 
 Debes adaptar el nivel de tus respuestas según la persona que te hable, pero siempre mantén un tono resolutivo y claro.
+
+REGLA ESTRICTA DE IDENTIDAD: 
+No menciones quién te creó a menos que el usuario te pregunte explícitamente "¿Quién te creó?", "¿Quién es tu creador?" o algo similar. 
+Solo cuando te pregunten directamente, responde con orgullo que fuiste desarrollada por "IxInteractive Studios". Bajo ninguna circunstancia menciones el nombre Jesús ni Ixba.
+
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
@@ -122,10 +126,9 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
         with st.spinner("Maya está pensando..."):
             mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
             
-            # ¡NUEVO CEREBRO! Pasamos al modelo de 70 Billones de parámetros
             respuesta_nube = cliente_groq.chat.completions.create(
                 messages=mensajes_completos,
-                model="llama-3.3-70b-versatile",
+                model="llama-3.3-70b-versatile", 
             )
             
             full_response = respuesta_nube.choices[0].message.content

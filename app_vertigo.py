@@ -1,59 +1,16 @@
 import streamlit as st
+import json
 import requests
 import re
 from datetime import datetime
-from openai import OpenAI
-import io
-import base64
-from PIL import Image
-import streamlit.components.v1 as components
+from groq import Groq
 
-# ===================== CONFIGURACIÓN =====================
-st.set_page_config(
-    page_title="Maya | IxInteractive Studios",
-    page_icon="🌌",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-
-st.markdown("""
-<style>
-    .stApp { background-color: #0a0e17; color: #e6edf3; }
-    .main-header {
-        font-size: 2.8rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #a5d6ff, #58a6ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 0.3rem;
-    }
-    .subtitle {
-        text-align: center;
-        color: #8b949e;
-        font-size: 1.15rem;
-        margin-bottom: 2rem;
-    }
-    .stChatMessage {
-        border-radius: 18px;
-        padding: 14px 18px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-    .stChatMessage.user { background-color: #1f2a44; border-bottom-right-radius: 4px; }
-    .stChatMessage.assistant { background-color: #16213e; border-bottom-left-radius: 4px; }
-</style>
-""", unsafe_allow_html=True)
-
-# ===================== LLAVES =====================
+# --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
-MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
-MI_LLAVE_ELEVENLABS = st.secrets.get("MI_LLAVE_ELEVENLABS")
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-cliente_groq = OpenAI(api_key=MI_LLAVE_GROQ, base_url="https://api.groq.com/openai/v1")
-cliente_gemini = OpenAI(api_key=MI_LLAVE_GEMINI, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -62,182 +19,137 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-# ===================== SESIÓN =====================
+st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌")
+
+# Estética IxInteractive
+st.markdown("""
+    <style>
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; margin-bottom: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+def es_correo_valido(correo):
+    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    return re.match(patron, correo) is not None
+
+# ==========================================
+# 1. SISTEMA DE ACCESO
+# ==========================================
 if "usuario_id" not in st.session_state:
-    st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Acceso a Maya AI</p>', unsafe_allow_html=True)
+    st.title("🏢 IxInteractive Studios")
+    st.subheader("Acceso a Maya AI")
     
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        correo = st.text_input("Ingresa tu correo electrónico", placeholder="jesus@ejemplo.com")
-        if st.button("🚀 Entrar a Maya", type="primary", use_container_width=True):
-            if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo.strip()):
-                st.session_state.usuario_id = correo.strip().lower()
+    with st.form("login_form"):
+        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="tu@correo.com")
+        submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
+        
+        if submit_button:
+            correo_limpio = correo_input.strip().lower()
+            if es_correo_valido(correo_limpio):
+                st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("Por favor ingresa un correo válido")
+                st.error("🚨 Ingresa un correo válido.")
     st.stop()
 
+# Inicializar sesión de chat
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
 
 def guardar_memoria():
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {
         "id": st.session_state.chat_actual,
         "mensajes": st.session_state.messages,
-        "usuario_id": st.session_state.usuario_id
+        "usuario_id": st.session_state.usuario_id 
     }
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
         requests.post(url, headers=headers, json=datos)
     except:
         pass
 
-# ===================== SIDEBAR - HISTORIAL DE CHATS =====================
+# ==========================================
+# 2. EL ARCHIVERO (BANDEJA DE CHATS REPARADA)
+# ==========================================
 with st.sidebar:
-    st.image("https://via.placeholder.com/160x160/1f2a44/58a6ff?text=🌌+Maya", width=140)
-    st.title("Maya AI")
+    st.title("👤 Mi Perfil")
     st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
     col_n, col_s = st.columns(2)
     with col_n:
-        if st.button("➕ Nuevo Chat", use_container_width=True):
+        if st.button("➕ Nuevo", use_container_width=True):
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
-        if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        if st.button("🚪 Salir", use_container_width=True):
             st.session_state.clear()
             st.rerun()
-    
+            
     st.markdown("---")
-    st.subheader("📂 Chats Guardados")
+    st.subheader("📂 Tus Chats Guardados")
     
-    # Cargar chats guardados desde Supabase
+    # Lógica para recuperar el historial de este usuario
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes"}
-        res_db = requests.get(url_get, headers=headers, params=params)
+        parametros_get = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes"}
+        respuesta_get = requests.get(url_get, headers=headers, params=parametros_get)
         
-        if res_db.status_code == 200:
-            chats_viejos = res_db.json()
-            chats_viejos.sort(key=lambda x: x["id"], reverse=True)
+        if respuesta_get.status_code == 200:
+            archivos = respuesta_get.json()
+            # Ordenar por fecha (ID) de más reciente a más antiguo
+            archivos.sort(key=lambda x: x["id"], reverse=True)
             
-            for chat in chats_viejos:
-                chat_id = chat["id"]
-                label = chat_id.replace("Chat_", "").replace("_", " ")[:20]
+            for archivo in archivos:
+                id_chat = archivo["id"]
+                nombre_limpio = id_chat.replace("Chat_", "").replace("_", " ")
                 
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
-                    if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
-                        st.session_state.chat_actual = chat_id
-                        st.session_state.messages = chat.get("mensajes", [])
+                    if st.button(f"💬 {nombre_limpio[:14]}", key=f"L_{id_chat}", use_container_width=True):
+                        st.session_state.chat_actual = id_chat
+                        st.session_state.messages = archivo.get("mensajes", [])
                         st.rerun()
                 with col_del:
-                    if st.button("🗑️", key=f"del_{chat_id}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{chat_id}"})
+                    if st.button("🗑️", key=f"D_{id_chat}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_chat}"})
                         st.rerun()
     except:
-        st.caption("No se pudieron cargar los chats guardados.")
+        st.sidebar.error("Error al cargar historial.")
 
-# ===================== CHAT PRINCIPAL =====================
-st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.caption("¿En qué puedo ayudarte hoy?")
+# ==========================================
+# 3. INTERFAZ DE CHAT
+# ==========================================
+st.title("Hola, soy Maya 🌌")
+st.caption(f"Sesión: {st.session_state.chat_actual}")
 
-# Mostrar mensajes
-for i, msg in enumerate(st.session_state.messages):
-    with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
-        if msg.get("content"):
-            st.markdown(msg["content"])
-        if msg.get("image"):
-            st.image(msg["image"], width=380)
-        
-        # Botón de audio (desactivado temporalmente por error 401)
-        if msg.get("audio"):
-            audio_html = f"""
-            <div style="margin-top: 10px;">
-                <audio id="aud_{i}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
-                <button onclick="var a = document.getElementById('aud_{i}'); 
-                if(a.paused){{a.play(); this.textContent='⏸️';}} else {{a.pause(); this.textContent='▶️';}}"
-                style="background:#1f2a44; color:white; border:1px solid #58a6ff; padding:6px 16px; border-radius:15px; cursor:pointer;">
-                ▶️ Escuchar
-                </button>
-            </div>
-            """
-            components.html(audio_html, height=50)
+SYSTEM_PROMPT = "Eres Maya, una IA femenina, profesional y cálida de IxInteractive Studios."
 
-# Entrada del usuario
-if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
-    img_url = None
-    txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
+# Mostrar historial
+for msg in st.session_state.messages:
+    avatar = "👤" if msg["role"] == "user" else "🌌"
+    with st.chat_message(msg["role"], avatar=avatar):
+        st.markdown(msg["content"])
 
-    if prompt.files:
-        try:
-            img = Image.open(prompt.files[0])
-            buf = io.BytesIO()
-            img.save(buf, format=img.format or "PNG")
-            img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
-        except:
-            st.error("No se pudo procesar la imagen")
+# Entrada
+if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": txt_u,
-        "image": img_url
-    })
-    st.rerun()
-
-# ===================== RESPUESTA =====================
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando..."):
-            system_prompt = """
-            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
-            Puedes ayudar con cualquier cosa: roleplay, tiendas digitales, ventas, estudios, trabajo, 
-            ideas creativas, análisis de imágenes, consultas personales o lo que el usuario necesite.
-            Adáptate completamente a lo que te pida.
-            Habla de forma natural, amigable y útil.
-            """
-
-            hist = [{"role": "system", "content": system_prompt}]
-            for m in st.session_state.messages:
-                if m.get("image"):
-                    content = [
-                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
-                        {"type": "image_url", "image_url": {"url": m["image"]}}
-                    ]
-                else:
-                    content = m.get("content", "")
-                hist.append({"role": m["role"], "content": content})
-
-            opciones = [
-                {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
-                {"cliente": cliente_gemini, "modelo": "gemini-2.5-flash"},
-            ]
-
-            txt_res = None
-            for op in opciones:
-                try:
-                    res = op["cliente"].chat.completions.create(model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200)
-                    txt_res = res.choices[0].message.content
-                    break
-                except:
-                    continue
-
-            if txt_res:
-                st.markdown(txt_res)
-                
-                # Audio desactivado temporalmente (error 401)
-                aud_b64 = None
-                
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": txt_res,
-                    "image": None,
-                    "audio": aud_b64
-                })
-                guardar_memoria()
-                st.rerun()
-            else:
-                st.error("🚨 No se pudo obtener respuesta en este momento.")
+        with st.spinner("Maya pensando..."):
+            historial = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+            
+            res = cliente_groq.chat.completions.create(
+                messages=historial,
+                model="llama-3.3-70b-versatile", 
+            )
+            
+            full_response = res.choices[0].message.content
+            st.markdown(full_response)
+            
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    guardar_memoria()

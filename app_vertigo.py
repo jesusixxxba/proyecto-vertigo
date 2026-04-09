@@ -5,10 +5,64 @@ from datetime import datetime
 from openai import OpenAI
 import io
 import base64
-import streamlit.components.v1 as components
 from PIL import Image
 
-# --- CONFIGURACIÓN ---
+# ===================== CONFIGURACIÓN =====================
+st.set_page_config(
+    page_title="Maya | IxInteractive Studios",
+    page_icon="🌌",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
+# Estilos modernos
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #0a0e17;
+        color: #e6edf3;
+    }
+    .main-header {
+        font-size: 2.8rem;
+        font-weight: 700;
+        background: linear-gradient(90deg, #a5d6ff, #58a6ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .subtitle {
+        text-align: center;
+        color: #8b949e;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    .stChatMessage {
+        border-radius: 18px;
+        padding: 14px 18px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .stChatMessage.user {
+        background-color: #1f2a44;
+        border-bottom-right-radius: 4px;
+    }
+    .stChatMessage.assistant {
+        background-color: #16213e;
+        border-bottom-left-radius: 4px;
+    }
+    .login-box {
+        background-color: #161b22;
+        padding: 2.5rem;
+        border-radius: 16px;
+        border: 1px solid #30363d;
+        max-width: 420px;
+        margin: 0 auto;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ===================== LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -24,31 +78,28 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="centered")
-
-st.markdown("""
-<style>
-    .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .stChatMessage { 
-        background-color: #161b22; 
-        border: 1px solid #30363d; 
-        border-radius: 12px; 
-        padding: 16px; 
-        margin-bottom: 12px; 
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- ACCESO ---
+# ===================== SESIÓN =====================
 if "usuario_id" not in st.session_state:
-    st.title("🏢 IxInteractive Studios")
-    st.subheader("Acceso a Maya AI")
-    with st.form("login"):
-        correo = st.text_input("✉️ Ingresa tu correo:", placeholder="tu@correo.com")
-        if st.form_submit_button("Entrar a Maya"):
+    # Pantalla de Login Mejorada
+    st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Acceso a Maya AI</p>', unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        
+        st.markdown("### 👋 Bienvenido")
+        correo = st.text_input("Ingresa tu correo electrónico", placeholder="jesus@ejemplo.com", label_visibility="collapsed")
+        
+        if st.button("🚀 Entrar a Maya", type="primary", use_container_width=True):
             if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo.strip()):
                 st.session_state.usuario_id = correo.strip().lower()
                 st.rerun()
+            else:
+                st.error("Por favor ingresa un correo electrónico válido")
+        
+        st.caption("Cada usuario tiene sus chats privados")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
     st.stop()
 
 if "chat_actual" not in st.session_state:
@@ -57,27 +108,36 @@ if "chat_actual" not in st.session_state:
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "usuario_id": st.session_state.usuario_id}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    datos = {
+        "id": st.session_state.chat_actual,
+        "mensajes": st.session_state.messages,
+        "usuario_id": st.session_state.usuario_id
+    }
+    try:
+        requests.post(url, headers=headers, json=datos)
+    except:
+        pass
 
-# --- SIDEBAR ---
+# ===================== SIDEBAR =====================
 with st.sidebar:
-    st.title("👤 Perfil")
-    st.caption(f"Usuario: {st.session_state.usuario_id}")
+    st.image("https://via.placeholder.com/150x150/1f2a44/58a6ff?text=Maya", width=120)
+    st.title("Maya AI")
+    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
-    if st.button("🚪 Salir", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+    st.markdown("---")
     
-    if st.button("➕ Nuevo Chat", use_container_width=True):
+    if st.button("➕ Nuevo Chat", use_container_width=True, type="secondary"):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
+    
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
 
-# --- CHAT PRINCIPAL ---
-st.title("Hola, soy Maya 🌌")
-st.caption("Tu asistente de roleplay e IxInteractive Studios")
+# ===================== CHAT PRINCIPAL =====================
+st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">¿En qué roleplay o tienda digital te ayudo hoy?</p>', unsafe_allow_html=True)
 
 # Mostrar mensajes
 for msg in st.session_state.messages:
@@ -85,9 +145,9 @@ for msg in st.session_state.messages:
         if msg.get("content"):
             st.markdown(msg["content"])
         if msg.get("image"):
-            st.image(msg["image"], width=320)
+            st.image(msg["image"], width=350)
 
-# --- ENTRADA DEL USUARIO ---
+# Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     texto_usuario = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -102,20 +162,20 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
             st.error("No se pudo procesar la imagen")
 
     st.session_state.messages.append({
-        "role": "user", 
-        "content": texto_usuario, 
+        "role": "user",
+        "content": texto_usuario,
         "image": img_url
     })
     st.rerun()
 
-# --- RESPUESTA DE MAYA ---
+# ===================== RESPUESTA =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando..."):
+        with st.spinner("Maya está pensando... 🌟"):
             system_prompt = """
             Eres Maya, una IA cálida, inteligente y creativa de IxInteractive Studios. 
-            Especializada en roleplay inmersivo y apoyo a tiendas digitales. 
-            Habla de forma natural, amigable y profesional. Sé empática y entusiasta cuando corresponda.
+            Especializada en roleplay inmersivo y apoyo a tiendas digitales.
+            Habla de forma natural, amigable y profesional. Sé empática y entusiasta.
             """
 
             hist = [{"role": "system", "content": system_prompt}]
@@ -129,7 +189,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
-            # Modelos en orden de prioridad
             opciones = [
                 {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
                 {"cliente": cliente_groq, "modelo": "llama-3.1-8b-instant"},
@@ -142,8 +201,8 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     res = opcion["cliente"].chat.completions.create(
                         model=opcion["modelo"], 
                         messages=hist, 
-                        temperature=0.75, 
-                        max_tokens=1100
+                        temperature=0.78, 
+                        max_tokens=1200
                     )
                     txt = res.choices[0].message.content
                     break
@@ -152,14 +211,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             if txt:
                 st.markdown(txt)
-                
                 st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": txt, 
-                    "image": None,
-                    "audio": None
+                    "role": "assistant",
+                    "content": txt,
+                    "image": None
                 })
                 guardar_memoria()
                 st.rerun()
             else:
-                st.error("🚨 No se pudo obtener respuesta de la IA en este momento.")
+                st.error("🚨 No se pudo obtener respuesta en este momento. Inténtalo de nuevo.")

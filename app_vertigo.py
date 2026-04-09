@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import requests
+import re  # <--- NUEVO: Librería para validar correos
 from datetime import datetime
 from groq import Groq
 
@@ -18,7 +19,7 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Proyecto Maya", page_icon="🌌")
+st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌")
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
@@ -27,23 +28,38 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. SISTEMA DE ACCESO (LOGIN PRIVADO)
+# 0. FUNCIÓN DEL "CADENERO" (Validar Correo)
+# ==========================================
+def es_correo_valido(correo):
+    # Esta fórmula matemática revisa que el texto tenga formato de correo (algo@algo.algo)
+    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    return re.match(patron, correo) is not None
+
+# ==========================================
+# 1. SISTEMA DE ACCESO (LOGIN PROFESIONAL)
 # ==========================================
 if "usuario_id" not in st.session_state:
-    st.title("🔐 Acceso a Maya")
-    st.markdown("Por favor, identifícate para acceder a tu espacio privado.")
+    st.title("🏢 IxInteractive Studios")
+    st.subheader("Acceso a Maya AI")
+    st.markdown("Por favor, ingresa tu correo electrónico corporativo o personal para acceder a tu entorno de trabajo.")
     
-    usuario_input = st.text_input("Nombre de usuario:")
-    if st.button("Entrar", use_container_width=True):
-        if usuario_input.strip() != "":
-            st.session_state.usuario_id = usuario_input.strip().lower()
-            st.rerun()
-        else:
-            st.warning("Por favor, ingresa un nombre válido.")
+    # Usamos un formulario para que se vea más ordenado y se envíe al presionar "Enter"
+    with st.form("login_form"):
+        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
+        submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
+        
+        if submit_button:
+            correo_limpio = correo_input.strip().lower()
+            if es_correo_valido(correo_limpio):
+                st.session_state.usuario_id = correo_limpio
+                st.rerun()
+            else:
+                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido (ej. tu@email.com).")
+                
     st.stop()
 
 # ==========================================
-# 2. SISTEMA DE MEMORIA EN LA NUBE (INDIVIDUAL)
+# 2. SISTEMA DE MEMORIA EN LA NUBE
 # ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
@@ -66,13 +82,14 @@ def guardar_memoria():
         st.error(f"🚨 Error de conexión: {e}")
 
 # ==========================================
-# 3. EL ARCHIVERO (FILTRADO POR USUARIO)
+# 3. EL ARCHIVERO (FILTRADO POR CORREO)
 # ==========================================
 with st.sidebar:
-    st.title(f"👤 Perfil: {st.session_state.usuario_id.capitalize()}")
+    # Mostramos el correo en la barra lateral para que sepa qué sesión está abierta
+    st.title("👤 Mi Perfil")
+    st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
     
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
-        # SOLUCIÓN AL BUG: Limpiamos TODA la memoria (el ID, los mensajes viejos, todo)
         st.session_state.clear()
         st.rerun()
         
@@ -88,7 +105,6 @@ with st.sidebar:
     
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        # Usamos params para evitar errores si el usuario tiene espacios en su nombre
         parametros_get = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,rol"}
         respuesta_get = requests.get(url_get, headers=headers, params=parametros_get)
         

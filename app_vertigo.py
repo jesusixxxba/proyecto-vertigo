@@ -179,7 +179,7 @@ if prompt := st.chat_input("Escribe o sube una imagen para Maya...", accept_file
                 # Usamos el modelo de visión de Groq
                 respuesta = cliente_groq.chat.completions.create(
                     messages=mensajes_api,
-                    model="llama-3.2-11b-vision-preview", # <--- EL MODELO CON OJOS
+                    model='llama-3.2-90b-vision-preview'
                 )
                 full_response = respuesta.choices[0].message.content
                 st.markdown(full_response)

@@ -36,13 +36,10 @@ if "usuario_id" not in st.session_state:
     usuario_input = st.text_input("Nombre de usuario:")
     if st.button("Entrar", use_container_width=True):
         if usuario_input.strip() != "":
-            # Guardamos el usuario en minúsculas y sin espacios extra para evitar errores
             st.session_state.usuario_id = usuario_input.strip().lower()
             st.rerun()
         else:
             st.warning("Por favor, ingresa un nombre válido.")
-    
-    # st.stop() detiene la ejecución del código aquí si no hay usuario
     st.stop()
 
 # ==========================================
@@ -58,7 +55,7 @@ def guardar_memoria():
         "id": st.session_state.chat_actual,
         "rol": st.session_state.rol,
         "mensajes": st.session_state.messages,
-        "usuario_id": st.session_state.usuario_id  # <--- AQUÍ GUARDAMOS AL DUEÑO DEL CHAT
+        "usuario_id": st.session_state.usuario_id 
     }
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
@@ -73,8 +70,10 @@ def guardar_memoria():
 # ==========================================
 with st.sidebar:
     st.title(f"👤 Perfil: {st.session_state.usuario_id.capitalize()}")
+    
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
-        del st.session_state["usuario_id"]
+        # SOLUCIÓN AL BUG: Limpiamos TODA la memoria (el ID, los mensajes viejos, todo)
+        st.session_state.clear()
         st.rerun()
         
     st.markdown("---")
@@ -88,9 +87,10 @@ with st.sidebar:
     st.subheader("Tus Chats Privados")
     
     try:
-        # AQUÍ ESTÁ LA MAGIA: Le pedimos a Supabase SOLO los chats donde usuario_id sea igual al usuario actual
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?usuario_id=eq.{st.session_state.usuario_id}&select=id,rol"
-        respuesta_get = requests.get(url_get, headers=headers)
+        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        # Usamos params para evitar errores si el usuario tiene espacios en su nombre
+        parametros_get = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,rol"}
+        respuesta_get = requests.get(url_get, headers=headers, params=parametros_get)
         
         if respuesta_get.status_code == 200:
             archivos = respuesta_get.json()
@@ -104,8 +104,8 @@ with st.sidebar:
                 col1, col2 = st.columns([4, 1])
                 with col1:
                     if st.button(f"💬 {nombre_visual}", key=f"load_{id_chat}", use_container_width=True):
-                        url_chat = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?id=eq.{id_chat}&select=*"
-                        resp_chat = requests.get(url_chat, headers=headers)
+                        parametros_chat = {"id": f"eq.{id_chat}", "select": "*"}
+                        resp_chat = requests.get(url_get, headers=headers, params=parametros_chat)
                         if resp_chat.status_code == 200 and len(resp_chat.json()) > 0:
                             chat_data = resp_chat.json()[0]
                             st.session_state.chat_actual = id_chat
@@ -113,8 +113,8 @@ with st.sidebar:
                         st.rerun()
                 with col2:
                     if st.button("❌", key=f"del_{id_chat}"):
-                        url_del = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?id=eq.{id_chat}"
-                        requests.delete(url_del, headers=headers)
+                        parametros_del = {"id": f"eq.{id_chat}"}
+                        requests.delete(url_get, headers=headers, params=parametros_del)
                         if st.session_state.chat_actual == id_chat:
                             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
                             st.session_state.messages = []

@@ -135,7 +135,7 @@ with st.sidebar:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL (AHORA CON OJOS)
+# 4. LA INTERFAZ PRINCIPAL (AHORA CON BOTÓN DE CLIP)
 # ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
@@ -152,17 +152,13 @@ Solo cuando te pregunten directamente, responde con orgullo que fuiste desarroll
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
-# Reconstruimos la pantalla mostrando textos e imágenes previas
 for message in st.session_state.messages:
     icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
-        st.markdown(message["content"])
-        # Si el mensaje guardado tenía una imagen, la pintamos
+        if message["content"]:
+            st.markdown(message["content"])
         if "image" in message and message["image"]:
             st.image(message["image"], caption="Imagen analizada", width=300)
-
-# Botón para subir imágenes
-uploaded_image = st.file_uploader("🖼️ Sube una imagen para que Maya la analice (opcional):", type=["jpg", "jpeg", "png"])
 
 def get_base64_image(image_file):
     import base64
@@ -171,52 +167,56 @@ def get_base64_image(image_file):
     try:
         img = Image.open(image_file)
         buffered = io.BytesIO()
-        img.save(buffered, format=img.format)
+        formato = img.format if img.format else "PNG"
+        img.save(buffered, format=formato)
         img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        return img_base64, img.format.lower()
+        return img_base64, formato.lower()
     except Exception as e:
         st.error(f"🚨 Error al procesar la imagen: {e}")
         return None, None
 
-if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
+# ¡AQUÍ ESTÁ LA MAGIA DEL DISEÑO MODERNO!
+if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, file_type=["jpg", "jpeg", "png"]):
+    
+    # Extraemos el texto y las imágenes de la caja de chat
+    texto_usuario = prompt.text if prompt.text else ""
+    archivos_subidos = prompt.files
+    
     image_data_url = None
 
-    # Procesamos la imagen si el usuario subió una
-    if uploaded_image:
-        base64_img, img_type = get_base64_image(uploaded_image)
+    if archivos_subidos and len(archivos_subidos) > 0:
+        base64_img, img_type = get_base64_image(archivos_subidos[0])
         if base64_img:
             image_data_url = f"data:image/{img_type};base64,{base64_img}"
 
-    # Guardamos en la memoria RAM de la sesión
     st.session_state.messages.append({
         "role": "user", 
-        "content": prompt,
+        "content": texto_usuario,
         "image": image_data_url if image_data_url else None
     })
 
-    # Mostramos el mensaje nuevo del usuario
     with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
+        if texto_usuario:
+            st.markdown(texto_usuario)
         if image_data_url:
             st.image(image_data_url, caption="Tu imagen", width=300)
 
-    # Turno de Maya
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está analizando..."):
             mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}]
             
-            # Formateamos los mensajes para el motor multimodal de Gemini
             for msg in st.session_state.messages:
                 content = msg["content"]
                 if msg["role"] == "user" and msg.get("image"):
+                    # Si mandas foto sin texto, le damos un texto interno por defecto
+                    texto_a_enviar = msg["content"] if msg["content"] else "¿Qué ves en esta imagen?"
                     content = [
-                        {"type": "text", "text": msg["content"]},
+                        {"type": "text", "text": texto_a_enviar},
                         {"type": "image_url", "image_url": {"url": msg["image"]}}
                     ]
                 mensajes_completos.append({'role': msg["role"], 'content': content})
 
             try:
-                # El motor oficial en uso
                 respuesta_nube = cliente_ia.chat.completions.create(
                     messages=mensajes_completos,
                     model="gemini-2.5-flash", 
@@ -225,7 +225,6 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
                 
-                # Guardamos la respuesta de Maya
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
                 guardar_memoria()
                 

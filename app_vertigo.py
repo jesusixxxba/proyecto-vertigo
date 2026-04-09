@@ -4,6 +4,8 @@ import requests
 import re
 from datetime import datetime
 from openai import OpenAI
+from gtts import gTTS  # <--- NUEVA LIBRERÍA DE VOZ
+import io
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
@@ -135,7 +137,7 @@ with st.sidebar:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL (AHORA CON BOTÓN DE CLIP)
+# 4. LA INTERFAZ PRINCIPAL
 # ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
@@ -162,7 +164,6 @@ for message in st.session_state.messages:
 
 def get_base64_image(image_file):
     import base64
-    import io
     from PIL import Image
     try:
         img = Image.open(image_file)
@@ -175,13 +176,10 @@ def get_base64_image(image_file):
         st.error(f"🚨 Error al procesar la imagen: {e}")
         return None, None
 
-# ¡AQUÍ ESTÁ LA MAGIA DEL DISEÑO MODERNO!
 if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, file_type=["jpg", "jpeg", "png"]):
     
-    # Extraemos el texto y las imágenes de la caja de chat
     texto_usuario = prompt.text if prompt.text else ""
     archivos_subidos = prompt.files
-    
     image_data_url = None
 
     if archivos_subidos and len(archivos_subidos) > 0:
@@ -208,7 +206,6 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
             for msg in st.session_state.messages:
                 content = msg["content"]
                 if msg["role"] == "user" and msg.get("image"):
-                    # Si mandas foto sin texto, le damos un texto interno por defecto
                     texto_a_enviar = msg["content"] if msg["content"] else "¿Qué ves en esta imagen?"
                     content = [
                         {"type": "text", "text": texto_a_enviar},
@@ -224,6 +221,22 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
+                
+                # --- SISTEMA DE VOZ (NUEVO) ---
+                try:
+                    # Limpiamos asteriscos y hashtags para que la voz no suene como robot leyendo código
+                    texto_limpio = full_response.replace("*", "").replace("#", "")
+                    
+                    # Generamos el audio en español con acento de México ('com.mx')
+                    tts = gTTS(text=texto_limpio, lang='es', tld='com.mx')
+                    fp = io.BytesIO()
+                    tts.write_to_fp(fp)
+                    fp.seek(0)
+                    
+                    # Mostramos y auto-reproducimos el audio
+                    st.audio(fp, format="audio/mp3", autoplay=True)
+                except Exception as e_audio:
+                    st.caption(f"🤫 (El sistema de voz está mudo temporalmente: {e_audio})")
                 
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
                 guardar_memoria()

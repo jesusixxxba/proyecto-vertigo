@@ -13,7 +13,6 @@ MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
 cliente_groq = OpenAI(api_key=MI_LLAVE_GROQ, base_url="https://api.groq.com/openai/v1")
 cliente_gemini = OpenAI(api_key=MI_LLAVE_GEMINI, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
@@ -30,7 +29,13 @@ st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="
 st.markdown("""
 <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .stChatMessage { 
+        background-color: #161b22; 
+        border: 1px solid #30363d; 
+        border-radius: 12px; 
+        padding: 16px; 
+        margin-bottom: 12px; 
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,9 +55,6 @@ if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
 
-if "usar_audio" not in st.session_state:
-    st.session_state.usar_audio = True
-
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "usuario_id": st.session_state.usuario_id}
@@ -63,11 +65,11 @@ def guardar_memoria():
 with st.sidebar:
     st.title("👤 Perfil")
     st.caption(f"Usuario: {st.session_state.usuario_id}")
-    st.checkbox("🔊 Activar audio con ElevenLabs", value=st.session_state.usar_audio, key="usar_audio")
     
     if st.button("🚪 Salir", use_container_width=True):
         st.session_state.clear()
         st.rerun()
+    
     if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
@@ -77,29 +79,15 @@ with st.sidebar:
 st.title("Hola, soy Maya 🌌")
 st.caption("Tu asistente de roleplay e IxInteractive Studios")
 
-for i, msg in enumerate(st.session_state.messages):
+# Mostrar mensajes
+for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
             st.markdown(msg["content"])
         if msg.get("image"):
             st.image(msg["image"], width=320)
-        
-        # Mostrar audio solo si existe y está activado
-        if msg.get("audio") and st.session_state.usar_audio:
-            audio_html = f"""
-            <div style="margin: 10px 0;">
-                <audio id="aud_{i}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
-                <button onclick="var a = document.getElementById('aud_{i}'); 
-                if(a.paused){{a.play(); this.textContent='⏸️ Pausar';}} 
-                else {{a.pause(); this.textContent='▶️ Escuchar';}}" 
-                style="background:#21262d; color:white; border:1px solid #8b949e; padding:8px 18px; border-radius:20px; cursor:pointer;">
-                ▶️ Escuchar
-                </button>
-            </div>
-            """
-            components.html(audio_html, height=55)
 
-# --- ENTRADA ---
+# --- ENTRADA DEL USUARIO ---
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     texto_usuario = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -113,25 +101,35 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
         except:
             st.error("No se pudo procesar la imagen")
 
-    st.session_state.messages.append({"role": "user", "content": texto_usuario, "image": img_url})
+    st.session_state.messages.append({
+        "role": "user", 
+        "content": texto_usuario, 
+        "image": img_url
+    })
     st.rerun()
 
-# --- RESPUESTA ---
+# --- RESPUESTA DE MAYA ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando..."):
-            system_prompt = "Eres Maya, una IA cálida, inteligente y creativa de IxInteractive Studios. Especializada en roleplay inmersivo y apoyo a tiendas digitales. Habla de forma natural, amigable y profesional."
+            system_prompt = """
+            Eres Maya, una IA cálida, inteligente y creativa de IxInteractive Studios. 
+            Especializada en roleplay inmersivo y apoyo a tiendas digitales. 
+            Habla de forma natural, amigable y profesional. Sé empática y entusiasta cuando corresponda.
+            """
 
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")},
-                               {"type": "image_url", "image_url": {"url": m["image"]}}]
+                    content = [
+                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                        {"type": "image_url", "image_url": {"url": m["image"]}}
+                    ]
                 else:
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
-            # Modelos
+            # Modelos en orden de prioridad
             opciones = [
                 {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
                 {"cliente": cliente_groq, "modelo": "llama-3.1-8b-instant"},
@@ -142,7 +140,10 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             for opcion in opciones:
                 try:
                     res = opcion["cliente"].chat.completions.create(
-                        model=opcion["modelo"], messages=hist, temperature=0.75, max_tokens=1100
+                        model=opcion["modelo"], 
+                        messages=hist, 
+                        temperature=0.75, 
+                        max_tokens=1100
                     )
                     txt = res.choices[0].message.content
                     break
@@ -151,35 +152,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             if txt:
                 st.markdown(txt)
-
-                # ==================== AUDIO ====================
-                aud_b64 = None
-                if st.session_state.usar_audio:
-                    try:
-                        clean_text = txt.replace("**", "").replace("*", "").strip()
-                        voice_id = "EXAVITQu4vr4xnSDxMaL"  # Sarah
-
-                        v_res = requests.post(
-                            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                            json={
-                                "text": clean_text,
-                                "model_id": "eleven_multilingual_v2",
-                                "voice_settings": {"stability": 0.75, "similarity_boost": 0.85}
-                            },
-                            headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"},
-                            timeout=10
-                        )
-
-                        if v_res.status_code == 200:
-                            aud_b64 = base64.b64encode(v_res.content).decode()
-                            st.caption("🔊 Audio generado con Sarah")
-                        else:
-                            st.caption(f"⚠️ ElevenLabs error {v_res.status_code} - Posiblemente sin créditos o voz no disponible")
-                    except Exception as e:
-                        st.caption(f"⚠️ Error al generar audio: {str(e)[:80]}")
-
-                st.session_state.messages.append({"role": "assistant", "content": txt, "audio": aud_b64})
+                
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": txt, 
+                    "image": None,
+                    "audio": None
+                })
                 guardar_memoria()
                 st.rerun()
             else:
-                st.error("🚨 No se pudo obtener respuesta de la IA.")
+                st.error("🚨 No se pudo obtener respuesta de la IA en este momento.")

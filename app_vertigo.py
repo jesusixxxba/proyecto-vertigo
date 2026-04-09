@@ -125,7 +125,7 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
             # ¡NUEVO CEREBRO! Pasamos al modelo de 70 Billones de parámetros
             respuesta_nube = cliente_groq.chat.completions.create(
                 messages=mensajes_completos,
-                model="llama-3.1-70b-versatile", 
+                model="llama-3.3-70b-versatile",
             )
             
             full_response = respuesta_nube.choices[0].message.content

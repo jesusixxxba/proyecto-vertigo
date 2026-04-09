@@ -124,7 +124,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 hist.append({"role": m["role"], "content": content})
 
             try:
-                # MODELO ACTUALIZADO: llama-3.2-11b-vision-instruct
+                # MOTOR ESTABLE: llama-3.2-11b-vision-instruct
                 res = cliente_ia.chat.completions.create(model="llama-3.2-11b-vision-instruct", messages=hist)
                 txt = res.choices[0].message.content
                 st.markdown(txt)

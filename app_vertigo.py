@@ -6,7 +6,8 @@ from datetime import datetime
 from openai import OpenAI
 from gtts import gTTS
 import io
-import base64  # <--- NUEVO: Para codificar el audio y ocultar el reproductor feo
+import base64
+import streamlit.components.v1 as components # <--- NUEVO: Para crear ventanas de HTML seguro
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
@@ -137,7 +138,7 @@ with st.sidebar:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL (CON BOTÓN DE VOZ ELEGANTE)
+# 4. LA INTERFAZ PRINCIPAL 
 # ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
@@ -154,7 +155,7 @@ Solo cuando te pregunten directamente, responde con orgullo que fuiste desarroll
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
-# Reconstruimos la pantalla mostrando textos, imágenes y los BOTONES de audio
+# Reconstruimos la pantalla (Ahora con iFrame para el botón seguro)
 for i, message in enumerate(st.session_state.messages):
     icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
@@ -163,19 +164,32 @@ for i, message in enumerate(st.session_state.messages):
         if "image" in message and message["image"]:
             st.image(message["image"], caption="Imagen analizada", width=300)
         
-        # Inyección del botón de audio minimalista
+        # Botón dinámico protegido
         if "audio" in message and message["audio"]:
             audio_id = f"audio_player_{i}"
             boton_html = f"""
-            <div style="margin-top: 10px;">
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                body {{ margin: 0; padding: 0; background-color: transparent; display: flex; align-items: center; font-family: sans-serif; }}
+                button {{
+                    background: transparent; border: 1px solid #8b949e; color: #c9d1d9; 
+                    padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; 
+                    transition: all 0.2s ease;
+                }}
+                button:hover {{ background: #30363d; color: white; }}
+            </style>
+            </head>
+            <body>
                 <audio id="{audio_id}" src="data:audio/mp3;base64,{message['audio']}"></audio>
-                <button onclick="var a = document.getElementById('{audio_id}'); if(a.paused){{a.play(); this.innerHTML='⏸️ Pausar';}}else{{a.pause(); this.innerHTML='▶️ Escuchar';}} a.onended=function(){{this.innerHTML='▶️ Escuchar';}}.bind(this);" 
-                style="background: transparent; border: 1px solid #8b949e; color: #8b949e; padding: 4px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s ease;">
+                <button onclick="var a = document.getElementById('{audio_id}'); if(a.paused){{a.play(); this.innerHTML='⏸️ Pausar';}}else{{a.pause(); this.innerHTML='▶️ Escuchar';}} a.onended=function(){{this.innerHTML='▶️ Escuchar';}}.bind(this);">
                     ▶️ Escuchar
                 </button>
-            </div>
+            </body>
+            </html>
             """
-            st.markdown(boton_html, unsafe_allow_html=True)
+            components.html(boton_html, height=45)
 
 def get_base64_image(image_file):
     from PIL import Image
@@ -236,7 +250,6 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
                 
-                # --- SISTEMA DE VOZ SILENCIOSO ---
                 audio_b64 = None
                 try:
                     texto_limpio = full_response.replace("*", "").replace("#", "")
@@ -244,20 +257,16 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                     fp = io.BytesIO()
                     tts.write_to_fp(fp)
                     fp.seek(0)
-                    # Convertimos el mp3 en texto base64 para ocultarlo en el HTML
                     audio_b64 = base64.b64encode(fp.read()).decode('utf-8')
                 except Exception as e_audio:
                     pass
                 
-                # Guardamos la respuesta y su audio oculto
                 st.session_state.messages.append({
                     "role": "assistant", 
                     "content": full_response,
-                    "audio": audio_b64  # Guardamos el audio base64 en la memoria
+                    "audio": audio_b64 
                 })
                 guardar_memoria()
-                
-                # Para que el botón de audio aparezca inmediatamente tras responder, forzamos recarga visual rápida
                 st.rerun()
                 
             except Exception as e:

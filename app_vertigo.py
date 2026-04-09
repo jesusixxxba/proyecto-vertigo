@@ -8,7 +8,7 @@ import base64
 import streamlit.components.v1 as components
 from PIL import Image
 
-# --- 1. CONFIGURACIÓN DE LLAVES ---
+# --- CONFIGURACIÓN ---
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -30,17 +30,11 @@ st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="
 st.markdown("""
 <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .stChatMessage { 
-        background-color: #161b22; 
-        border: 1px solid #30363d; 
-        border-radius: 12px; 
-        padding: 16px; 
-        margin-bottom: 12px; 
-    }
+    .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. ACCESO ---
+# --- ACCESO ---
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
@@ -50,13 +44,14 @@ if "usuario_id" not in st.session_state:
             if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo.strip()):
                 st.session_state.usuario_id = correo.strip().lower()
                 st.rerun()
-            else:
-                st.error("Por favor ingresa un correo válido")
     st.stop()
 
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
+
+if "usar_audio" not in st.session_state:
+    st.session_state.usar_audio = True
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
@@ -64,20 +59,21 @@ def guardar_memoria():
     try: requests.post(url, headers=headers, json=datos)
     except: pass
 
-# --- 3. SIDEBAR ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("👤 Perfil")
     st.caption(f"Usuario: {st.session_state.usuario_id}")
+    st.checkbox("🔊 Activar audio con ElevenLabs", value=st.session_state.usar_audio, key="usar_audio")
+    
     if st.button("🚪 Salir", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-    st.markdown("---")
     if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
 
-# --- 4. CHAT ---
+# --- CHAT PRINCIPAL ---
 st.title("Hola, soy Maya 🌌")
 st.caption("Tu asistente de roleplay e IxInteractive Studios")
 
@@ -88,7 +84,8 @@ for i, msg in enumerate(st.session_state.messages):
         if msg.get("image"):
             st.image(msg["image"], width=320)
         
-        if msg.get("audio"):
+        # Mostrar audio solo si existe y está activado
+        if msg.get("audio") and st.session_state.usar_audio:
             audio_html = f"""
             <div style="margin: 10px 0;">
                 <audio id="aud_{i}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
@@ -102,7 +99,7 @@ for i, msg in enumerate(st.session_state.messages):
             """
             components.html(audio_html, height=55)
 
-# Entrada
+# --- ENTRADA ---
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     texto_usuario = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -119,7 +116,7 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     st.session_state.messages.append({"role": "user", "content": texto_usuario, "image": img_url})
     st.rerun()
 
-# Respuesta
+# --- RESPUESTA ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando..."):
@@ -127,10 +124,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
-                content = [{"type": "text", "text": m.get("content", "")}]
                 if m.get("image"):
-                    content.append({"type": "image_url", "image_url": {"url": m["image"]}})
-                hist.append({"role": m["role"], "content": content if m.get("image") else m.get("content", "")})
+                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                               {"type": "image_url", "image_url": {"url": m["image"]}}]
+                else:
+                    content = m.get("content", "")
+                hist.append({"role": m["role"], "content": content})
 
             # Modelos
             opciones = [
@@ -142,7 +141,9 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             txt = None
             for opcion in opciones:
                 try:
-                    res = opcion["cliente"].chat.completions.create(model=opcion["modelo"], messages=hist, temperature=0.75, max_tokens=1100)
+                    res = opcion["cliente"].chat.completions.create(
+                        model=opcion["modelo"], messages=hist, temperature=0.75, max_tokens=1100
+                    )
                     txt = res.choices[0].message.content
                     break
                 except:
@@ -151,20 +152,15 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             if txt:
                 st.markdown(txt)
 
-                # ==================== AUDIO MEJORADO ====================
+                # ==================== AUDIO ====================
                 aud_b64 = None
-                try:
-                    clean_text = txt.replace("**", "").replace("*", "").strip()
-                    
-                    # Intentamos primero con tu voz (Sarah)
-                    voices_to_try = [
-                        "EXAVITQu4vr4xnSDxMaL",   # Sarah (tu voz original)
-                        "21m00Tcm4TlvDq8ikWAM"    # Rachel (voz default estable)
-                    ]
-                    
-                    for voice_id in voices_to_try:
+                if st.session_state.usar_audio:
+                    try:
+                        clean_text = txt.replace("**", "").replace("*", "").strip()
+                        voice_id = "EXAVITQu4vr4xnSDxMaL"  # Sarah
+
                         v_res = requests.post(
-                            "https://api.elevenlabs.io/v1/text-to-speech/" + voice_id,
+                            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
                             json={
                                 "text": clean_text,
                                 "model_id": "eleven_multilingual_v2",
@@ -173,16 +169,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                             headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"},
                             timeout=10
                         )
-                        
+
                         if v_res.status_code == 200:
                             aud_b64 = base64.b64encode(v_res.content).decode()
-                            st.caption(f"🔊 Audio generado con voz ID: {voice_id[:8]}...")
-                            break
+                            st.caption("🔊 Audio generado con Sarah")
                         else:
-                            continue
-                            
-                except Exception as e:
-                    st.caption("⚠️ No se pudo generar audio (posiblemente créditos agotados o voz no disponible)")
+                            st.caption(f"⚠️ ElevenLabs error {v_res.status_code} - Posiblemente sin créditos o voz no disponible")
+                    except Exception as e:
+                        st.caption(f"⚠️ Error al generar audio: {str(e)[:80]}")
 
                 st.session_state.messages.append({"role": "assistant", "content": txt, "audio": aud_b64})
                 guardar_memoria()

@@ -8,16 +8,16 @@ import io
 import base64
 import streamlit.components.v1 as components
 
-# --- LAS LLAVES DE LA NUBE ---
-MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"] # <--- VOLVEMOS A TU LLAVE DE GROQ
+# --- LAS LLAVES DE LA NUBE (Asegúrate de tenerlas en Secrets) ---
+MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
-# Conectamos la tubería a los servidores de Groq
+# Conectamos a Groq (Motor de alta velocidad)
 cliente_ia = OpenAI(
     api_key=MI_LLAVE_GROQ, 
-    base_url="https://api.groq.com/openai/v1" # <--- LA NUEVA RUTA
+    base_url="https://api.groq.com/openai/v1"
 )
 
 headers = {
@@ -45,10 +45,10 @@ def es_correo_valido(correo):
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
-    st.markdown("Por favor, ingresa tu correo corporativo o personal para acceder.")
+    st.markdown("Ingresa tu correo para acceder a tu entorno privado.")
     
     with st.form("login_form"):
-        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
+        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="tu@correo.com")
         submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
         
         if submit_button:
@@ -57,237 +57,138 @@ if "usuario_id" not in st.session_state:
                 st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("🚨 Acceso denegado: Por favor, ingresa un correo válido.")
-                
+                st.error("🚨 Por favor, ingresa un correo válido.")
     st.stop()
 
 # ==========================================
-# 2. SISTEMA DE MEMORIA EN LA NUBE
+# 2. SISTEMA DE MEMORIA (SUPABASE)
 # ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
-    st.session_state.rol = "Maya AI" 
 
 def guardar_memoria():
     datos = {
         "id": st.session_state.chat_actual,
-        "rol": st.session_state.rol,
         "mensajes": st.session_state.messages,
         "usuario_id": st.session_state.usuario_id 
     }
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
         requests.post(url, headers=headers, json=datos)
-    except Exception as e:
-        st.error(f"🚨 Error de conexión: {e}")
+    except:
+        pass
 
 # ==========================================
-# 3. EL ARCHIVERO
+# 3. EL ARCHIVERO (SIDEBAR)
 # ==========================================
 with st.sidebar:
     st.title("👤 Mi Perfil")
-    st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
-    
+    st.caption(f"Conectado: **{st.session_state.usuario_id}**")
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-        
     st.markdown("---")
-    
     if st.button("➕ Nueva Conversación", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
-        
     st.markdown("---")
-    st.subheader("Tus Chats Privados")
-    
+    st.subheader("Chats Privados")
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        parametros_get = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,rol"}
-        respuesta_get = requests.get(url_get, headers=headers, params=parametros_get)
-        
-        if respuesta_get.status_code == 200:
-            archivos = respuesta_get.json()
-            archivos.sort(key=lambda x: x["id"], reverse=True)
-            
-            for archivo in archivos:
+        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id"}
+        resp = requests.get(url_get, headers=headers, params=params)
+        if resp.status_code == 200:
+            for archivo in sorted(resp.json(), key=lambda x: x["id"], reverse=True):
                 id_chat = archivo["id"]
-                fecha_limpia = id_chat.replace("Chat_", "").replace("_", " a las ")
-                nombre_visual = f"Sesión {fecha_limpia[:15]}"
-                
                 col1, col2 = st.columns([4, 1])
                 with col1:
-                    if st.button(f"💬 {nombre_visual}", key=f"load_{id_chat}", use_container_width=True):
-                        parametros_chat = {"id": f"eq.{id_chat}", "select": "*"}
-                        resp_chat = requests.get(url_get, headers=headers, params=parametros_chat)
-                        if resp_chat.status_code == 200 and len(resp_chat.json()) > 0:
-                            chat_data = resp_chat.json()[0]
+                    if st.button(f"💬 {id_chat[:15]}...", key=f"L_{id_chat}", use_container_width=True):
+                        p = {"id": f"eq.{id_chat}", "select": "*"}
+                        r = requests.get(url_get, headers=headers, params=p)
+                        if r.status_code == 200 and r.json():
                             st.session_state.chat_actual = id_chat
-                            st.session_state.messages = chat_data.get("mensajes", [])
-                        st.rerun()
+                            st.session_state.messages = r.json()[0].get("mensajes", [])
+                            st.rerun()
                 with col2:
-                    if st.button("❌", key=f"del_{id_chat}"):
-                        parametros_del = {"id": f"eq.{id_chat}"}
-                        requests.delete(url_get, headers=headers, params=parametros_del)
-                        if st.session_state.chat_actual == id_chat:
-                            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-                            st.session_state.messages = []
+                    if st.button("❌", key=f"D_{id_chat}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_chat}"})
                         st.rerun()
-    except Exception as e:
+    except:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL
+# 4. INTERFAZ Y LÓGICA DE MAYA
 # ==========================================
-st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
+st.title("Hola, soy Maya. ¿En qué te ayudo? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
 
 SYSTEM_PROMPT = """
-Eres Maya, una inteligencia artificial avanzada, sumamente inteligente y adaptable.
-Tienes una personalidad femenina, profesional, cálida y empática. 
-Debes adaptar el nivel de tus respuestas según la persona que te hable, pero siempre mantén un tono resolutivo y claro.
-
-REGLA ESTRICTA DE IDENTIDAD: 
-No menciones quién te creó a menos que el usuario te pregunte explícitamente "¿Quién te creó?", "¿Quién es tu creador?" o algo similar. 
-Solo cuando te pregunten directamente, responde con orgullo que fuiste desarrollada por "IxInteractive Studios". Bajo ninguna circunstancia menciones el nombre Jesús ni Ixba.
-
-Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
+Eres Maya, una IA de IxInteractive Studios. Eres femenina, profesional y cálida.
+REGLA DE ORO: Solo menciona a IxInteractive Studios si te preguntan quién te creó.
+No menciones nombres personales (Jesús/Ixba). Sé resolutiva.
 """
 
-for i, message in enumerate(st.session_state.messages):
-    icono = "👤" if message["role"] == "user" else "🌌"
-    with st.chat_message(message["role"], avatar=icono):
-        if message["content"]:
-            st.markdown(message["content"])
-        if "image" in message and message["image"]:
-            st.image(message["image"], caption="Imagen analizada", width=300)
-        
-        if "audio" in message and message["audio"]:
-            audio_id = f"audio_player_{i}"
-            boton_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <style>
-                body {{ margin: 0; padding: 0; background-color: transparent; display: flex; align-items: center; font-family: sans-serif; }}
-                button {{
-                    background: transparent; border: 1px solid #8b949e; color: #c9d1d9; 
-                    padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; 
-                    transition: all 0.2s ease;
-                }}
-                button:hover {{ background: #30363d; color: white; }}
-            </style>
-            </head>
-            <body>
-                <audio id="{audio_id}" src="data:audio/mp3;base64,{message['audio']}"></audio>
-                <button onclick="var a = document.getElementById('{audio_id}'); if(a.paused){{a.play(); this.innerHTML='⏸️ Pausar';}}else{{a.pause(); this.innerHTML='▶️ Escuchar';}} a.onended=function(){{this.innerHTML='▶️ Escuchar';}}.bind(this);">
-                    ▶️ Escuchar
-                </button>
-            </body>
-            </html>
-            """
-            components.html(boton_html, height=45)
+# Mostrar historial
+for i, msg in enumerate(st.session_state.messages):
+    avatar = "👤" if msg["role"] == "user" else "🌌"
+    with st.chat_message(msg["role"], avatar=avatar):
+        if msg["content"]: st.markdown(msg["content"])
+        if msg.get("image"): st.image(msg["image"], width=300)
+        if msg.get("audio"):
+            aud_id = f"aud_{i}"
+            html = f"""<html><body style='margin:0;'><audio id='{aud_id}' src='data:audio/mp3;base64,{msg['audio']}'></audio>
+            <button onclick="var a=document.getElementById('{aud_id}'); if(a.paused){{a.play();this.innerHTML='⏸️';}}else{{a.pause();this.innerHTML='▶️';}}" 
+            style='background:#30363d;border:1px solid #8b949e;color:white;padding:5px 15px;border-radius:20px;cursor:pointer;'>▶️ Escuchar</button>
+            <script>document.getElementById('{aud_id}').onended=function(){{this.nextElementSibling.innerHTML='▶️';}}</script></body></html>"""
+            components.html(html, height=45)
 
-def get_base64_image(image_file):
-    from PIL import Image
-    try:
-        img = Image.open(image_file)
-        buffered = io.BytesIO()
-        formato = img.format if img.format else "PNG"
-        img.save(buffered, format=formato)
-        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        return img_base64, formato.lower()
-    except Exception as e:
-        st.error(f"🚨 Error al procesar la imagen: {e}")
-        return None, None
+# Input del chat
+if prompt := st.chat_input("Escribe o sube una imagen...", accept_file=True, file_type=["jpg","png","jpeg"]):
+    img_b64 = None
+    if prompt.files:
+        from PIL import Image
+        img = Image.open(prompt.files[0])
+        buf = io.BytesIO()
+        img.save(buf, format=img.format if img.format else "PNG")
+        img_b64 = base64.b64encode(buf.getvalue()).decode()
+        img_b64 = f"data:image/{img.format.lower()};base64,{img_b64}"
 
-if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, file_type=["jpg", "jpeg", "png"]):
-    
-    texto_usuario = prompt.text if prompt.text else ""
-    archivos_subidos = prompt.files
-    image_data_url = None
+    st.session_state.messages.append({"role": "user", "content": prompt.text, "image": img_b64})
+    st.rerun()
 
-    if archivos_subidos and len(archivos_subidos) > 0:
-        base64_img, img_type = get_base64_image(archivos_subidos[0])
-        if base64_img:
-            image_data_url = f"data:image/{img_type};base64,{base64_img}"
-
-    st.session_state.messages.append({
-        "role": "user", 
-        "content": texto_usuario,
-        "image": image_data_url if image_data_url else None
-    })
-
-    with st.chat_message("user", avatar="👤"):
-        if texto_usuario:
-            st.markdown(texto_usuario)
-        if image_data_url:
-            st.image(image_data_url, caption="Tu imagen", width=300)
-
+# Respuesta de la IA (si el último mensaje es del usuario)
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está analizando..."):
-            mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-            
-            for msg in st.session_state.messages:
-                content = msg["content"]
-                if msg["role"] == "user" and msg.get("image"):
-                    texto_a_enviar = msg["content"] if msg["content"] else "¿Qué ves en esta imagen?"
-                    content = [
-                        {"type": "text", "text": texto_a_enviar},
-                        {"type": "image_url", "image_url": {"url": msg["image"]}}
-                    ]
-                mensajes_completos.append({'role': msg["role"], 'content': content})
+        with st.spinner("Maya está pensando..."):
+            historial = [{"role": "system", "content": SYSTEM_PROMPT}]
+            for m in st.session_state.messages:
+                content = m["content"]
+                if m.get("image"):
+                    content = [{"type": "text", "text": m["content"] or "Analiza esta imagen"},
+                               {"type": "image_url", "image_url": {"url": m["image"]}}]
+                historial.append({"role": m["role"], "content": content})
 
             try:
-                # ¡EL MOTOR GROQ DE ALTA VELOCIDAD Y VISIÓN!
-                respuesta_nube = cliente_ia.chat.completions.create(
-                    messages=mensajes_completos,
-                    model="llama-3.2-90b-vision-preview", 
-                )
-                
-                full_response = respuesta_nube.choices[0].message.content
-                st.markdown(full_response)
-                
-                # SISTEMA DE VOZ PREMIUM (ElevenLabs)
-                audio_b64 = None
+                # MOTOR LLAMA 3.2 INSTRUCT (Estable y con visión)
+                res = cliente_ia.chat.completions.create(model="llama-3.2-90b-vision-instruct", messages=historial)
+                txt = res.choices[0].message.content
+                st.markdown(txt)
+
+                # VOZ ELEVENLABS
+                aud_final = None
                 try:
-                    texto_limpio = full_response.replace("*", "").replace("#", "")
-                    VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
-                    url_11 = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
-                    
-                    headers_11 = {
-                        "xi-api-key": MI_LLAVE_ELEVENLABS,
-                        "Content-Type": "application/json"
-                    }
-                    
-                    data_11 = {
-                        "text": texto_limpio,
-                        "model_id": "eleven_multilingual_v2", 
-                        "voice_settings": {
-                            "stability": 0.5,
-                            "similarity_boost": 0.75
-                        }
-                    }
-                    
-                    respuesta_audio = requests.post(url_11, json=data_11, headers=headers_11)
-                    
-                    if respuesta_audio.status_code == 200:
-                        audio_b64 = base64.b64encode(respuesta_audio.content).decode('utf-8')
-                    else:
-                        st.error("🤫 Maya perdió la voz temporalmente (Error de ElevenLabs).")
-                        
-                except Exception as e_audio:
-                    pass
-                
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": full_response,
-                    "audio": audio_b64 
-                })
+                    v_url = "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL"
+                    v_head = {"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"}
+                    v_data = {"text": txt.replace("*",""), "model_id": "eleven_multilingual_v2"}
+                    v_res = requests.post(v_url, json=v_data, headers=v_head)
+                    if v_res.status_code == 200:
+                        aud_final = base64.b64encode(v_res.content).decode()
+                except: pass
+
+                st.session_state.messages.append({"role": "assistant", "content": txt, "audio": aud_final})
                 guardar_memoria()
                 st.rerun()
-                
             except Exception as e:
-                st.error(f"🚨 Error de motor: {e}")
+                st.error(f"🚨 Error: {e}")

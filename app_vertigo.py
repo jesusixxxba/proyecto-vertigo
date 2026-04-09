@@ -34,7 +34,7 @@ st.markdown("""
     .subtitle {
         text-align: center;
         color: #8b949e;
-        font-size: 1.1rem;
+        font-size: 1.15rem;
         margin-bottom: 2rem;
     }
     .stChatMessage {
@@ -80,7 +80,6 @@ headers = {
 
 # ===================== SESIÓN =====================
 if "usuario_id" not in st.session_state:
-    # Pantalla de Login Mejorada
     st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Acceso a Maya AI</p>', unsafe_allow_html=True)
     
@@ -97,7 +96,7 @@ if "usuario_id" not in st.session_state:
             else:
                 st.error("Por favor ingresa un correo electrónico válido")
         
-        st.caption("Cada usuario tiene sus chats privados")
+        st.caption("Tus chats son privados y personales")
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.stop()
@@ -137,7 +136,7 @@ with st.sidebar:
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">¿En qué roleplay o tienda digital te ayudo hoy?</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">¿En qué puedo ayudarte hoy?</p>', unsafe_allow_html=True)
 
 # Mostrar mensajes
 for msg in st.session_state.messages:
@@ -172,10 +171,18 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando... 🌟"):
+            # System Prompt Versátil (esto es lo más importante)
             system_prompt = """
-            Eres Maya, una IA cálida, inteligente y creativa de IxInteractive Studios. 
-            Especializada en roleplay inmersivo y apoyo a tiendas digitales.
-            Habla de forma natural, amigable y profesional. Sé empática y entusiasta.
+            Eres Maya, una IA versátil, cálida, inteligente y creativa creada por IxInteractive Studios.
+
+            Tu objetivo principal es adaptarte completamente a las necesidades del usuario.
+            Puedes ayudar con cualquier tema: roleplay inmersivo, tiendas digitales, ventas, 
+            atención al cliente, ideas creativas, estudios, trabajo, escritura, análisis de imágenes, 
+            consultas personales, brainstorming, programación, o cualquier cosa que el usuario necesite.
+
+            Habla siempre de forma natural, amigable, empática y útil.
+            Sé entusiasta cuando corresponda, pero mantén un tono agradable y profesional.
+            Nunca asumas el contexto; pregúntale al usuario si es necesario para entender mejor cómo ayudarle.
             """
 
             hist = [{"role": "system", "content": system_prompt}]

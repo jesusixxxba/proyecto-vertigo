@@ -103,7 +103,7 @@ with st.sidebar:
     col_n, col_s = st.columns(2)
     with col_n:
         if st.button("➕ Nuevo Chat", use_container_width=True):
-            **guardar_memoria()**  # ← GUARDA el chat actual ANTES de crear uno nuevo
+            guardar_memoria()          # Guarda el chat actual ANTES de crear uno nuevo
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
@@ -131,7 +131,7 @@ with st.sidebar:
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
                     if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
-                        guardar_memoria()  # Guarda el actual antes de cambiar
+                        guardar_memoria()   # Guarda el actual antes de cambiar
                         st.session_state.chat_actual = chat_id
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
@@ -146,6 +146,7 @@ with st.sidebar:
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
 st.caption("¿En qué puedo ayudarte hoy?")
 
+# Mostrar mensajes
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
@@ -153,6 +154,7 @@ for i, msg in enumerate(st.session_state.messages):
         if msg.get("image"):
             st.image(msg["image"], width=380)
 
+# Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -199,7 +201,10 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             for op in opciones:
                 try:
                     res = op["cliente"].chat.completions.create(
-                        model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200
+                        model=op["modelo"], 
+                        messages=hist, 
+                        temperature=0.78, 
+                        max_tokens=1200
                     )
                     txt_res = res.choices[0].message.content
                     break

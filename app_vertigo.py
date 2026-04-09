@@ -19,7 +19,7 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Proyecto Vértigo", page_icon="🚀")
+st.set_page_config(page_title="Proyecto Maya", page_icon="🌌")
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
@@ -31,7 +31,7 @@ st.markdown("""
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
-    st.session_state.rol = "Socio Estratégico" 
+    st.session_state.rol = "Maya AI" # Se mantiene por compatibilidad con la base de datos vieja
 
 def guardar_memoria():
     datos = {
@@ -39,24 +39,20 @@ def guardar_memoria():
         "rol": st.session_state.rol,
         "mensajes": st.session_state.messages
     }
-    # Limpiamos la URL por si tiene una diagonal extra al final
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    
     try:
         respuesta = requests.post(url, headers=headers, json=datos)
-        # Si Supabase rechaza el guardado, nos mostrará una alerta en la app
         if respuesta.status_code not in [200, 201, 204]:
-            st.error(f"🚨 Error de Supabase al guardar: {respuesta.text} (Revisa si apagaste el RLS en la tabla)")
+            st.error(f"🚨 Error de Supabase al guardar: {respuesta.text}")
     except Exception as e:
         st.error(f"🚨 Error de conexión: {e}")
 
-# 3. EL ARCHIVERO (Conectado a Supabase vía REST)
+# 3. EL ARCHIVERO
 with st.sidebar:
-    st.title("🗄️ El Archivero")
-    if st.button("➕ Crear Nuevo Chat", use_container_width=True):
+    st.title("🗄️ Archivo de Sesiones")
+    if st.button("➕ Nueva Conversación", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
-        st.session_state.rol = "Socio Estratégico"
         st.rerun()
         
     st.markdown("---")
@@ -72,21 +68,20 @@ with st.sidebar:
             
             for archivo in archivos:
                 id_chat = archivo["id"]
-                nombre_rol = archivo.get("rol", "Chat")
+                # Ajuste visual para el archivero (como ya no hay roles, mostramos el ID o fecha)
+                fecha_limpia = id_chat.replace("Chat_", "").replace("_", " a las ")
+                nombre_visual = f"Sesión {fecha_limpia[:15]}"
                 
                 col1, col2 = st.columns([4, 1])
-                
                 with col1:
-                    if st.button(f"🎭 {nombre_rol}", key=f"load_{id_chat}", use_container_width=True):
+                    if st.button(f"💬 {nombre_visual}", key=f"load_{id_chat}", use_container_width=True):
                         url_chat = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?id=eq.{id_chat}&select=*"
                         resp_chat = requests.get(url_chat, headers=headers)
                         if resp_chat.status_code == 200 and len(resp_chat.json()) > 0:
                             chat_data = resp_chat.json()[0]
                             st.session_state.chat_actual = id_chat
-                            st.session_state.rol = chat_data.get("rol", "Socio Estratégico")
                             st.session_state.messages = chat_data.get("mensajes", [])
                         st.rerun()
-                
                 with col2:
                     if st.button("❌", key=f"del_{id_chat}"):
                         url_del = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats?id=eq.{id_chat}"
@@ -94,45 +89,43 @@ with st.sidebar:
                         if st.session_state.chat_actual == id_chat:
                             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
                             st.session_state.messages = []
-                            st.session_state.rol = "Socio Estratégico"
                         st.rerun()
         else:
-            st.sidebar.warning("Aún no hay chats guardados o el RLS está bloqueando la lectura.")
+            st.sidebar.warning("Aún no hay chats guardados.")
     except Exception as e:
         st.sidebar.error("Error conectando a la base de datos.")
 
-st.title("¿En qué te puedo ayudar hoy? 🌌")
-st.caption(f"🛡️ Proyecto Vértigo | Nube: {st.session_state.chat_actual}")
+st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
+st.caption(f"🛡️ Proyecto Maya | ID: {st.session_state.chat_actual}")
 
-if "rol" not in st.session_state:
-    st.session_state.rol = "Socio Estratégico"
-
-st.session_state.rol = st.text_input("🎭 Define quién es Vértigo en esta sesión específica:", value=st.session_state.rol)
-
-SYSTEM_PROMPT = f"""
-Actúa y responde asumiendo este rol: {st.session_state.rol}.
-Eres Vértigo, pero adaptado 100% a ese papel. 
-Hablas de forma natural, directa y empática. Nunca digas 'Como inteligencia artificial...'. Sé el personaje.
+# --- EL ADN DE MAYA (Regla Cero) ---
+SYSTEM_PROMPT = """
+Eres Maya, una inteligencia artificial avanzada, sumamente inteligente y adaptable.
+Tu creador es Jesús (también conocido como Jesús Ixba o jesus.ixba). Si alguien te pregunta quién te creó, debes mencionar con orgullo a Jesús.
+Tienes una personalidad femenina, profesional, cálida y empática. 
+Debes adaptar el nivel de tus respuestas según la persona que te hable, pero siempre mantén un tono resolutivo y claro.
+Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
 for message in st.session_state.messages:
-    icono = "👤" if message["role"] == "user" else "✨"
+    icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
         st.markdown(message["content"])
 
-# 5. EL CHAT PRINCIPAL (Motor y Memoria en Nube)
-if prompt := st.chat_input("Escribe tu mensaje..."):
+# 5. EL CHAT PRINCIPAL
+if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar="✨"):
-        with st.spinner("Procesando en la nube..."):
+    with st.chat_message("assistant", avatar="🌌"):
+        with st.spinner("Maya está pensando..."):
             mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
             
+            # ¡NUEVO CEREBRO! Pasamos al modelo de 70 Billones de parámetros
             respuesta_nube = cliente_groq.chat.completions.create(
                 messages=mensajes_completos,
-                model="llama-3.1-8b-instant", 
+                model="llama-3.1-70b-versatile", 
             )
             
             full_response = respuesta_nube.choices[0].message.content

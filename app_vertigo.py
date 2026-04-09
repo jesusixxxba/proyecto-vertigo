@@ -6,6 +6,7 @@ from openai import OpenAI
 import io
 import base64
 from PIL import Image
+import streamlit.components.v1 as components
 
 # ===================== CONFIGURACIÓN =====================
 st.set_page_config(
@@ -47,6 +48,7 @@ st.markdown("""
 # ===================== LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
+MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -92,133 +94,129 @@ def guardar_memoria():
     except:
         pass
 
-# ===================== SIDEBAR (REPARADO) =====================
+# ===================== SIDEBAR (HISTORIAL REPARADO) =====================
 with st.sidebar:
-    st.image("https://via.placeholder.com/180x180/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
     st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
-    col_a, col_b = st.columns(2)
-    with col_a:
+    col_n, col_s = st.columns(2)
+    with col_n:
         if st.button("➕ Nuevo", use_container_width=True):
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
-    with col_b:
+    with col_s:
         if st.button("🚪 Salir", use_container_width=True):
             st.session_state.clear()
             st.rerun()
-
+            
     st.markdown("---")
     st.subheader("📂 Chats Guardados")
     
-    # Lógica para recuperar chats de Supabase
+    # AQUÍ ESTÁ LA MAGIA: Recuperar chats de Supabase
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
         params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes"}
-        respuesta = requests.get(url_get, headers=headers, params=params)
+        res_db = requests.get(url_get, headers=headers, params=params)
         
-        if respuesta.status_code == 200:
-            chats = respuesta.json()
-            # Ordenar por fecha (ID) de más reciente a más viejo
-            chats.sort(key=lambda x: x["id"], reverse=True)
+        if res_db.status_code == 200:
+            chats_viejos = res_db.json()
+            # Ordenar por el más reciente
+            chats_viejos.sort(key=lambda x: x["id"], reverse=True)
             
-            for chat in chats:
-                id_chat = chat["id"]
-                # Formatear el nombre para que se vea limpio
-                nombre_btn = id_chat.replace("Chat_", "").replace("_", " ")
+            for chat in chats_viejos:
+                id_c = chat["id"]
+                label = id_c.replace("Chat_", "").replace("_", " ")
                 
-                col_c, col_d = st.columns([4, 1])
-                with col_c:
-                    if st.button(f"💬 {nombre_btn[:15]}...", key=f"load_{id_chat}", use_container_width=True):
-                        st.session_state.chat_actual = id_chat
+                col_btn, col_del = st.columns([4, 1])
+                with col_btn:
+                    if st.button(f"💬 {label[:14]}", key=f"load_{id_c}", use_container_width=True):
+                        st.session_state.chat_actual = id_c
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
-                with col_d:
-                    if st.button("🗑️", key=f"del_{id_chat}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_chat}"})
+                with col_del:
+                    if st.button("🗑️", key=f"del_{id_c}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
                         st.rerun()
     except:
-        st.error("No se pudieron cargar los chats.")
+        st.caption("No se pudieron cargar los chats.")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.caption(f"🛡️ Sesión: {st.session_state.chat_actual}")
+st.caption(f"🛡️ Sesión activa: {st.session_state.chat_actual}")
 
-# Mostrar historial de mensajes
-for msg in st.session_state.messages:
+# Mostrar mensajes e imágenes
+for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
             st.markdown(msg["content"])
         if msg.get("image"):
             st.image(msg["image"], width=380)
+        
+        # EL BOTÓN DE AUDIO (Restaurado)
+        if msg.get("audio"):
+            aud_id = f"aud_{i}"
+            audio_html = f"""
+            <div style="margin-top: 10px;">
+                <audio id="{aud_id}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
+                <button onclick="var a = document.getElementById('{aud_id}'); if(a.paused){{a.play(); this.textContent='⏸️';}} else {{a.pause(); this.textContent='▶️';}}" 
+                style="background:#1f2a44; color:white; border:1px solid #58a6ff; padding:5px 15px; border-radius:15px; cursor:pointer;">
+                ▶️ Escuchar
+                </button>
+            </div>
+            """
+            components.html(audio_html, height=45)
 
-# Entrada del usuario
-if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
+# Entrada
+if prompt := st.chat_input("Escribe tu mensaje...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
-    texto_usuario = prompt.text if hasattr(prompt, "text") else str(prompt)
+    txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
 
     if prompt.files:
-        try:
-            img = Image.open(prompt.files[0])
-            buf = io.BytesIO()
-            img.save(buf, format=img.format or "PNG")
-            img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
-        except:
-            st.error("No se pudo procesar la imagen")
+        img = Image.open(prompt.files[0])
+        buf = io.BytesIO()
+        img.save(buf, format=img.format or "PNG")
+        img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": texto_usuario,
-        "image": img_url
-    })
+    st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
 
-# ===================== RESPUESTA DE MAYA =====================
+# Respuesta
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando... 🌟"):
-            system_prompt = "Eres Maya, una IA versátil, cálida e inteligente de IxInteractive Studios. Resuelve lo que el usuario necesite."
-
-            hist = [{"role": "system", "content": system_prompt}]
+        with st.spinner("Maya pensando..."):
+            hist = [{"role": "system", "content": "Eres Maya, IA de IxInteractive Studios."}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [
-                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
-                        {"type": "image_url", "image_url": {"url": m["image"]}}
-                    ]
-                else:
-                    content = m.get("content", "")
+                    content = [{"type": "text", "text": m.get("content", "Analiza esto")}, {"type": "image_url", "image_url": {"url": m["image"]}}]
+                else: content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
             opciones = [
                 {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
-                {"cliente": cliente_groq, "modelo": "llama-3.1-8b-instant"},
-                {"cliente": cliente_gemini, "modelo": "gemini-1.5-flash"},
+                {"cliente": cliente_gemini, "modelo": "gemini-2.5-flash"},
             ]
 
-            txt = None
-            for opcion in opciones:
+            txt_res = None
+            for op in opciones:
                 try:
-                    res = opcion["cliente"].chat.completions.create(
-                        model=opcion["modelo"], 
-                        messages=hist, 
-                        temperature=0.78, 
-                        max_tokens=1200
-                    )
-                    txt = res.choices[0].message.content
+                    res = op["cliente"].chat.completions.create(model=op["modelo"], messages=hist)
+                    txt_res = res.choices[0].message.content
                     break
-                except:
-                    continue
+                except: continue
 
-            if txt:
-                st.markdown(txt)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": txt,
-                    "image": None
-                })
+            if txt_res:
+                st.markdown(txt_res)
+                
+                # VOZ ELEVENLABS
+                aud_b64 = None
+                try:
+                    v_res = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL", 
+                        json={"text": txt_res.replace("*",""), "model_id": "eleven_multilingual_v2"}, 
+                        headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"})
+                    if v_res.status_code == 200: aud_b64 = base64.b64encode(v_res.content).decode()
+                except: pass
+
+                st.session_state.messages.append({"role": "assistant", "content": txt_res, "audio": aud_b64})
                 guardar_memoria()
                 st.rerun()
-            else:
-                st.error("🚨 No se pudo obtener respuesta.")

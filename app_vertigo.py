@@ -4,15 +4,15 @@ import requests
 import re
 from datetime import datetime
 from openai import OpenAI
-from gtts import gTTS
 import io
 import base64
-import streamlit.components.v1 as components # <--- NUEVO: Para crear ventanas de HTML seguro
+import streamlit.components.v1 as components
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"] # <--- NUEVA LLAVE
 
 cliente_ia = OpenAI(
     api_key=MI_LLAVE_GEMINI, 
@@ -138,7 +138,7 @@ with st.sidebar:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL 
+# 4. LA INTERFAZ PRINCIPAL
 # ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
@@ -155,7 +155,6 @@ Solo cuando te pregunten directamente, responde con orgullo que fuiste desarroll
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
-# Reconstruimos la pantalla (Ahora con iFrame para el botón seguro)
 for i, message in enumerate(st.session_state.messages):
     icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
@@ -164,7 +163,6 @@ for i, message in enumerate(st.session_state.messages):
         if "image" in message and message["image"]:
             st.image(message["image"], caption="Imagen analizada", width=300)
         
-        # Botón dinámico protegido
         if "audio" in message and message["audio"]:
             audio_id = f"audio_player_{i}"
             boton_html = f"""
@@ -242,6 +240,7 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 mensajes_completos.append({'role': msg["role"], 'content': content})
 
             try:
+                # 1. Obtenemos el texto de Gemini
                 respuesta_nube = cliente_ia.chat.completions.create(
                     messages=mensajes_completos,
                     model="gemini-2.5-flash", 
@@ -250,14 +249,36 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
                 
+                # 2. SISTEMA DE VOZ PREMIUM (ElevenLabs)
                 audio_b64 = None
                 try:
                     texto_limpio = full_response.replace("*", "").replace("#", "")
-                    tts = gTTS(text=texto_limpio, lang='es', tld='com.mx')
-                    fp = io.BytesIO()
-                    tts.write_to_fp(fp)
-                    fp.seek(0)
-                    audio_b64 = base64.b64encode(fp.read()).decode('utf-8')
+                    
+                    # ID de la voz "Bella" (femenina, suave, muy natural)
+                    VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
+                    url_11 = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+                    
+                    headers_11 = {
+                        "xi-api-key": MI_LLAVE_ELEVENLABS,
+                        "Content-Type": "application/json"
+                    }
+                    
+                    data_11 = {
+                        "text": texto_limpio,
+                        "model_id": "eleven_multilingual_v2", # Modelo multilingüe para español perfecto
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75
+                        }
+                    }
+                    
+                    respuesta_audio = requests.post(url_11, json=data_11, headers=headers_11)
+                    
+                    if respuesta_audio.status_code == 200:
+                        audio_b64 = base64.b64encode(respuesta_audio.content).decode('utf-8')
+                    else:
+                        st.error("🤫 Maya perdió la voz temporalmente (Error de ElevenLabs).")
+                        
                 except Exception as e_audio:
                     pass
                 

@@ -48,7 +48,7 @@ st.markdown("""
 # ===================== LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
-MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
+MI_LLAVE_ELEVENLABS = st.secrets.get("MI_LLAVE_ELEVENLABS")
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -94,26 +94,27 @@ def guardar_memoria():
     except:
         pass
 
-# ===================== SIDEBAR (HISTORIAL REPARADO) =====================
+# ===================== SIDEBAR - HISTORIAL DE CHATS =====================
 with st.sidebar:
+    st.image("https://via.placeholder.com/160x160/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
     st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
     col_n, col_s = st.columns(2)
     with col_n:
-        if st.button("➕ Nuevo", use_container_width=True):
+        if st.button("➕ Nuevo Chat", use_container_width=True):
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
-        if st.button("🚪 Salir", use_container_width=True):
+        if st.button("🚪 Cerrar Sesión", use_container_width=True):
             st.session_state.clear()
             st.rerun()
-            
+    
     st.markdown("---")
     st.subheader("📂 Chats Guardados")
     
-    # AQUÍ ESTÁ LA MAGIA: Recuperar chats de Supabase
+    # Cargar chats guardados desde Supabase
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
         params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes"}
@@ -121,31 +122,30 @@ with st.sidebar:
         
         if res_db.status_code == 200:
             chats_viejos = res_db.json()
-            # Ordenar por el más reciente
             chats_viejos.sort(key=lambda x: x["id"], reverse=True)
             
             for chat in chats_viejos:
-                id_c = chat["id"]
-                label = id_c.replace("Chat_", "").replace("_", " ")
+                chat_id = chat["id"]
+                label = chat_id.replace("Chat_", "").replace("_", " ")[:20]
                 
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
-                    if st.button(f"💬 {label[:14]}", key=f"load_{id_c}", use_container_width=True):
-                        st.session_state.chat_actual = id_c
+                    if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
+                        st.session_state.chat_actual = chat_id
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
                 with col_del:
-                    if st.button("🗑️", key=f"del_{id_c}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
+                    if st.button("🗑️", key=f"del_{chat_id}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{chat_id}"})
                         st.rerun()
     except:
-        st.caption("No se pudieron cargar los chats.")
+        st.caption("No se pudieron cargar los chats guardados.")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.caption(f"🛡️ Sesión activa: {st.session_state.chat_actual}")
+st.caption("¿En qué puedo ayudarte hoy?")
 
-# Mostrar mensajes e imágenes
+# Mostrar mensajes
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
@@ -153,43 +153,62 @@ for i, msg in enumerate(st.session_state.messages):
         if msg.get("image"):
             st.image(msg["image"], width=380)
         
-        # EL BOTÓN DE AUDIO (Restaurado)
+        # Botón de audio (desactivado temporalmente por error 401)
         if msg.get("audio"):
-            aud_id = f"aud_{i}"
             audio_html = f"""
             <div style="margin-top: 10px;">
-                <audio id="{aud_id}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
-                <button onclick="var a = document.getElementById('{aud_id}'); if(a.paused){{a.play(); this.textContent='⏸️';}} else {{a.pause(); this.textContent='▶️';}}" 
-                style="background:#1f2a44; color:white; border:1px solid #58a6ff; padding:5px 15px; border-radius:15px; cursor:pointer;">
+                <audio id="aud_{i}" src="data:audio/mp3;base64,{msg['audio']}"></audio>
+                <button onclick="var a = document.getElementById('aud_{i}'); 
+                if(a.paused){{a.play(); this.textContent='⏸️';}} else {{a.pause(); this.textContent='▶️';}}"
+                style="background:#1f2a44; color:white; border:1px solid #58a6ff; padding:6px 16px; border-radius:15px; cursor:pointer;">
                 ▶️ Escuchar
                 </button>
             </div>
             """
-            components.html(audio_html, height=45)
+            components.html(audio_html, height=50)
 
-# Entrada
-if prompt := st.chat_input("Escribe tu mensaje...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
+# Entrada del usuario
+if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
 
     if prompt.files:
-        img = Image.open(prompt.files[0])
-        buf = io.BytesIO()
-        img.save(buf, format=img.format or "PNG")
-        img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
+        try:
+            img = Image.open(prompt.files[0])
+            buf = io.BytesIO()
+            img.save(buf, format=img.format or "PNG")
+            img_url = f"data:image/{(img.format or 'png').lower()};base64,{base64.b64encode(buf.getvalue()).decode()}"
+        except:
+            st.error("No se pudo procesar la imagen")
 
-    st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
+    st.session_state.messages.append({
+        "role": "user",
+        "content": txt_u,
+        "image": img_url
+    })
     st.rerun()
 
-# Respuesta
+# ===================== RESPUESTA =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya pensando..."):
-            hist = [{"role": "system", "content": "Eres Maya, IA de IxInteractive Studios."}]
+        with st.spinner("Maya está pensando..."):
+            system_prompt = """
+            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
+            Puedes ayudar con cualquier cosa: roleplay, tiendas digitales, ventas, estudios, trabajo, 
+            ideas creativas, análisis de imágenes, consultas personales o lo que el usuario necesite.
+            Adáptate completamente a lo que te pida.
+            Habla de forma natural, amigable y útil.
+            """
+
+            hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [{"type": "text", "text": m.get("content", "Analiza esto")}, {"type": "image_url", "image_url": {"url": m["image"]}}]
-                else: content = m.get("content", "")
+                    content = [
+                        {"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                        {"type": "image_url", "image_url": {"url": m["image"]}}
+                    ]
+                else:
+                    content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
             opciones = [
@@ -200,23 +219,25 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             txt_res = None
             for op in opciones:
                 try:
-                    res = op["cliente"].chat.completions.create(model=op["modelo"], messages=hist)
+                    res = op["cliente"].chat.completions.create(model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200)
                     txt_res = res.choices[0].message.content
                     break
-                except: continue
+                except:
+                    continue
 
             if txt_res:
                 st.markdown(txt_res)
                 
-                # VOZ ELEVENLABS
+                # Audio desactivado temporalmente (error 401)
                 aud_b64 = None
-                try:
-                    v_res = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL", 
-                        json={"text": txt_res.replace("*",""), "model_id": "eleven_multilingual_v2"}, 
-                        headers={"xi-api-key": MI_LLAVE_ELEVENLABS, "Content-Type": "application/json"})
-                    if v_res.status_code == 200: aud_b64 = base64.b64encode(v_res.content).decode()
-                except: pass
-
-                st.session_state.messages.append({"role": "assistant", "content": txt_res, "audio": aud_b64})
+                
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": txt_res,
+                    "image": None,
+                    "audio": aud_b64
+                })
                 guardar_memoria()
                 st.rerun()
+            else:
+                st.error("🚨 No se pudo obtener respuesta en este momento.")

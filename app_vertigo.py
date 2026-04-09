@@ -4,15 +4,15 @@ import requests
 import re
 from datetime import datetime
 from openai import OpenAI
-from gtts import gTTS  # <--- NUEVA LIBRERÍA DE VOZ
+from gtts import gTTS
 import io
+import base64  # <--- NUEVO: Para codificar el audio y ocultar el reproductor feo
 
 # --- LAS LLAVES DE LA NUBE ---
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-# Conectamos la librería a los servidores de Google Gemini
 cliente_ia = OpenAI(
     api_key=MI_LLAVE_GEMINI, 
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -43,7 +43,7 @@ def es_correo_valido(correo):
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
-    st.markdown("Por favor, ingresa tu correo electrónico corporativo o personal para acceder a tu entorno de trabajo.")
+    st.markdown("Por favor, ingresa tu correo corporativo o personal para acceder.")
     
     with st.form("login_form"):
         correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
@@ -55,7 +55,7 @@ if "usuario_id" not in st.session_state:
                 st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido.")
+                st.error("🚨 Acceso denegado: Por favor, ingresa un correo válido.")
                 
     st.stop()
 
@@ -137,7 +137,7 @@ with st.sidebar:
         pass
 
 # ==========================================
-# 4. LA INTERFAZ PRINCIPAL
+# 4. LA INTERFAZ PRINCIPAL (CON BOTÓN DE VOZ ELEGANTE)
 # ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
@@ -154,16 +154,30 @@ Solo cuando te pregunten directamente, responde con orgullo que fuiste desarroll
 Nunca digas "Como inteligencia artificial...", simplemente sé tú misma.
 """
 
-for message in st.session_state.messages:
+# Reconstruimos la pantalla mostrando textos, imágenes y los BOTONES de audio
+for i, message in enumerate(st.session_state.messages):
     icono = "👤" if message["role"] == "user" else "🌌"
     with st.chat_message(message["role"], avatar=icono):
         if message["content"]:
             st.markdown(message["content"])
         if "image" in message and message["image"]:
             st.image(message["image"], caption="Imagen analizada", width=300)
+        
+        # Inyección del botón de audio minimalista
+        if "audio" in message and message["audio"]:
+            audio_id = f"audio_player_{i}"
+            boton_html = f"""
+            <div style="margin-top: 10px;">
+                <audio id="{audio_id}" src="data:audio/mp3;base64,{message['audio']}"></audio>
+                <button onclick="var a = document.getElementById('{audio_id}'); if(a.paused){{a.play(); this.innerHTML='⏸️ Pausar';}}else{{a.pause(); this.innerHTML='▶️ Escuchar';}} a.onended=function(){{this.innerHTML='▶️ Escuchar';}}.bind(this);" 
+                style="background: transparent; border: 1px solid #8b949e; color: #8b949e; padding: 4px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s ease;">
+                    ▶️ Escuchar
+                </button>
+            </div>
+            """
+            st.markdown(boton_html, unsafe_allow_html=True)
 
 def get_base64_image(image_file):
-    import base64
     from PIL import Image
     try:
         img = Image.open(image_file)
@@ -222,24 +236,29 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
                 
-                # --- SISTEMA DE VOZ (NUEVO) ---
+                # --- SISTEMA DE VOZ SILENCIOSO ---
+                audio_b64 = None
                 try:
-                    # Limpiamos asteriscos y hashtags para que la voz no suene como robot leyendo código
                     texto_limpio = full_response.replace("*", "").replace("#", "")
-                    
-                    # Generamos el audio en español con acento de México ('com.mx')
                     tts = gTTS(text=texto_limpio, lang='es', tld='com.mx')
                     fp = io.BytesIO()
                     tts.write_to_fp(fp)
                     fp.seek(0)
-                    
-                    # Mostramos y auto-reproducimos el audio
-                    st.audio(fp, format="audio/mp3", autoplay=True)
+                    # Convertimos el mp3 en texto base64 para ocultarlo en el HTML
+                    audio_b64 = base64.b64encode(fp.read()).decode('utf-8')
                 except Exception as e_audio:
-                    st.caption(f"🤫 (El sistema de voz está mudo temporalmente: {e_audio})")
+                    pass
                 
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                # Guardamos la respuesta y su audio oculto
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": full_response,
+                    "audio": audio_b64  # Guardamos el audio base64 en la memoria
+                })
                 guardar_memoria()
+                
+                # Para que el botón de audio aparezca inmediatamente tras responder, forzamos recarga visual rápida
+                st.rerun()
                 
             except Exception as e:
                 st.error(f"🚨 Error al consultar Gemini: {e}")

@@ -1,16 +1,20 @@
 import streamlit as st
 import json
 import requests
-import re  # <--- NUEVO: Librería para validar correos
+import re
 from datetime import datetime
-from groq import Groq
+from openai import OpenAI # <--- NUEVA LIBRERÍA
 
 # --- LAS LLAVES DE LA NUBE ---
-MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
+MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
+# Conectamos la librería directamente a los servidores de Google Gemini
+cliente_ia = OpenAI(
+    api_key=MI_LLAVE_GEMINI, 
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -27,23 +31,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ==========================================
-# 0. FUNCIÓN DEL "CADENERO" (Validar Correo)
-# ==========================================
 def es_correo_valido(correo):
-    # Esta fórmula matemática revisa que el texto tenga formato de correo (algo@algo.algo)
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return re.match(patron, correo) is not None
 
-# ==========================================
-# 1. SISTEMA DE ACCESO (LOGIN PROFESIONAL)
-# ==========================================
+# 1. SISTEMA DE ACCESO
 if "usuario_id" not in st.session_state:
     st.title("🏢 IxInteractive Studios")
     st.subheader("Acceso a Maya AI")
     st.markdown("Por favor, ingresa tu correo electrónico corporativo o personal para acceder a tu entorno de trabajo.")
     
-    # Usamos un formulario para que se vea más ordenado y se envíe al presionar "Enter"
     with st.form("login_form"):
         correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
         submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
@@ -54,13 +51,11 @@ if "usuario_id" not in st.session_state:
                 st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido (ej. tu@email.com).")
+                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido.")
                 
     st.stop()
 
-# ==========================================
 # 2. SISTEMA DE MEMORIA EN LA NUBE
-# ==========================================
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
@@ -75,17 +70,12 @@ def guardar_memoria():
     }
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
-        respuesta = requests.post(url, headers=headers, json=datos)
-        if respuesta.status_code not in [200, 201, 204]:
-            st.error(f"🚨 Error al guardar: {respuesta.text}")
+        requests.post(url, headers=headers, json=datos)
     except Exception as e:
         st.error(f"🚨 Error de conexión: {e}")
 
-# ==========================================
-# 3. EL ARCHIVERO (FILTRADO POR CORREO)
-# ==========================================
+# 3. EL ARCHIVERO
 with st.sidebar:
-    # Mostramos el correo en la barra lateral para que sepa qué sesión está abierta
     st.title("👤 Mi Perfil")
     st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
     
@@ -135,14 +125,10 @@ with st.sidebar:
                             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
                             st.session_state.messages = []
                         st.rerun()
-        else:
-            st.sidebar.warning("Aún no tienes chats guardados.")
     except Exception as e:
-        st.sidebar.error("Error conectando a la base de datos.")
+        pass
 
-# ==========================================
 # 4. LA INTERFAZ PRINCIPAL
-# ==========================================
 st.title("Hola, soy Maya. ¿En qué te ayudo hoy? 🌌")
 st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
 
@@ -169,12 +155,13 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando..."):
+        with st.spinner("Maya está analizando..."):
             mensajes_completos = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
             
-            respuesta_nube = cliente_groq.chat.completions.create(
+            # ¡EL NUEVO MOTOR GOOGLE GEMINI PRO!
+            respuesta_nube = cliente_ia.chat.completions.create(
                 messages=mensajes_completos,
-                model="llama-3.3-70b-versatile", 
+                model="gemini-1.5-pro", 
             )
             
             full_response = respuesta_nube.choices[0].message.content

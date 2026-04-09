@@ -15,13 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos modernos
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0a0e17;
-        color: #e6edf3;
-    }
+    .stApp { background-color: #0a0e17; color: #e6edf3; }
     .main-header {
         font-size: 2.8rem;
         font-weight: 700;
@@ -29,7 +25,7 @@ st.markdown("""
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.3rem;
     }
     .subtitle {
         text-align: center;
@@ -40,25 +36,11 @@ st.markdown("""
     .stChatMessage {
         border-radius: 18px;
         padding: 14px 18px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
-    .stChatMessage.user {
-        background-color: #1f2a44;
-        border-bottom-right-radius: 4px;
-    }
-    .stChatMessage.assistant {
-        background-color: #16213e;
-        border-bottom-left-radius: 4px;
-    }
-    .login-box {
-        background-color: #161b22;
-        padding: 2.5rem;
-        border-radius: 16px;
-        border: 1px solid #30363d;
-        max-width: 420px;
-        margin: 0 auto;
-    }
+    .stChatMessage.user { background-color: #1f2a44; border-bottom-right-radius: 4px; }
+    .stChatMessage.assistant { background-color: #16213e; border-bottom-left-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,22 +65,15 @@ if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Acceso a Maya AI</p>', unsafe_allow_html=True)
     
-    with st.container():
-        st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        
-        st.markdown("### 👋 Bienvenido")
-        correo = st.text_input("Ingresa tu correo electrónico", placeholder="jesus@ejemplo.com", label_visibility="collapsed")
-        
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        correo = st.text_input("Ingresa tu correo electrónico", placeholder="jesus@ejemplo.com")
         if st.button("🚀 Entrar a Maya", type="primary", use_container_width=True):
             if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo.strip()):
                 st.session_state.usuario_id = correo.strip().lower()
                 st.rerun()
             else:
-                st.error("Por favor ingresa un correo electrónico válido")
-        
-        st.caption("Tus chats son privados y personales")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+                st.error("Por favor ingresa un correo válido")
     st.stop()
 
 if "chat_actual" not in st.session_state:
@@ -119,13 +94,12 @@ def guardar_memoria():
 
 # ===================== SIDEBAR =====================
 with st.sidebar:
-    st.image("https://via.placeholder.com/150x150/1f2a44/58a6ff?text=Maya", width=120)
+    st.image("https://via.placeholder.com/180x180/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
     st.caption(f"Usuario: **{st.session_state.usuario_id}**")
-    
     st.markdown("---")
     
-    if st.button("➕ Nuevo Chat", use_container_width=True, type="secondary"):
+    if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
@@ -138,13 +112,13 @@ with st.sidebar:
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">¿En qué puedo ayudarte hoy?</p>', unsafe_allow_html=True)
 
-# Mostrar mensajes
+# Mostrar historial de mensajes (con imágenes)
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
         if msg.get("content"):
             st.markdown(msg["content"])
         if msg.get("image"):
-            st.image(msg["image"], width=350)
+            st.image(msg["image"], width=380)
 
 # Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
@@ -167,22 +141,16 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     })
     st.rerun()
 
-# ===================== RESPUESTA =====================
+# ===================== RESPUESTA DE MAYA =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está pensando... 🌟"):
-            # System Prompt Versátil (esto es lo más importante)
             system_prompt = """
-            Eres Maya, una IA versátil, cálida, inteligente y creativa creada por IxInteractive Studios.
-
-            Tu objetivo principal es adaptarte completamente a las necesidades del usuario.
-            Puedes ayudar con cualquier tema: roleplay inmersivo, tiendas digitales, ventas, 
-            atención al cliente, ideas creativas, estudios, trabajo, escritura, análisis de imágenes, 
-            consultas personales, brainstorming, programación, o cualquier cosa que el usuario necesite.
-
-            Habla siempre de forma natural, amigable, empática y útil.
-            Sé entusiasta cuando corresponda, pero mantén un tono agradable y profesional.
-            Nunca asumas el contexto; pregúntale al usuario si es necesario para entender mejor cómo ayudarle.
+            Eres Maya, una IA versátil, cálida, inteligente y creativa de IxInteractive Studios.
+            Puedes ayudar con cualquier cosa: roleplay, tiendas digitales, ventas, estudios, trabajo, 
+            ideas creativas, análisis de imágenes, consultas personales o lo que el usuario necesite.
+            Adáptate completamente a lo que te pida el usuario.
+            Habla de forma natural, amigable, empática y útil.
             """
 
             hist = [{"role": "system", "content": system_prompt}]
@@ -226,4 +194,4 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 guardar_memoria()
                 st.rerun()
             else:
-                st.error("🚨 No se pudo obtener respuesta en este momento. Inténtalo de nuevo.")
+                st.error("🚨 No se pudo obtener respuesta en este momento.")

@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 import requests
-import re  # <--- NUEVO: Librería para validar correos
+import re 
 from datetime import datetime
 from groq import Groq
 
@@ -31,9 +31,9 @@ st.markdown("""
 # 0. FUNCIÓN DEL "CADENERO" (Validar Correo)
 # ==========================================
 def es_correo_valido(correo):
-    # Esta fórmula matemática revisa que el texto tenga formato de correo (algo@algo.algo)
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(patron, correo) is not in None
+    # CORRECCIÓN AQUÍ: Cambiamos 'is not in' por 'is not'
+    return re.match(patron, correo) is not None
 
 # ==========================================
 # 1. SISTEMA DE ACCESO (LOGIN PROFESIONAL)
@@ -43,7 +43,6 @@ if "usuario_id" not in st.session_state:
     st.subheader("Acceso a Maya AI")
     st.markdown("Por favor, ingresa tu correo electrónico corporativo o personal para acceder a tu entorno de trabajo.")
     
-    # Usamos un formulario para que se vea más ordenado y se envíe al presionar "Enter"
     with st.form("login_form"):
         correo_input = st.text_input("✉️ Correo electrónico:", placeholder="ejemplo@correo.com")
         submit_button = st.form_submit_button("Iniciar Sesión", use_container_width=True)
@@ -54,7 +53,7 @@ if "usuario_id" not in st.session_state:
                 st.session_state.usuario_id = correo_limpio
                 st.rerun()
             else:
-                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido (ej. tu@email.com).")
+                st.error("🚨 Acceso denegado: Por favor, ingresa un correo electrónico válido.")
                 
     st.stop()
 
@@ -76,8 +75,6 @@ def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     try:
         respuesta = requests.post(url, headers=headers, json=datos)
-        if respuesta.status_code not in [200, 201, 204]:
-            st.error(f"🚨 Error al guardar: {respuesta.text}")
     except Exception as e:
         st.error(f"🚨 Error de conexión: {e}")
 
@@ -85,7 +82,6 @@ def guardar_memoria():
 # 3. EL ARCHIVERO (FILTRADO POR CORREO)
 # ==========================================
 with st.sidebar:
-    # Mostramos el correo en la barra lateral para que sepa qué sesión está abierta
     st.title("👤 Mi Perfil")
     st.caption(f"Conectado como:\n**{st.session_state.usuario_id}**")
     
@@ -135,8 +131,6 @@ with st.sidebar:
                             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
                             st.session_state.messages = []
                         st.rerun()
-        else:
-            st.sidebar.warning("Aún no tienes chats guardados.")
     except Exception as e:
         st.sidebar.error("Error conectando a la base de datos.")
 

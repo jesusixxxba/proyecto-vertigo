@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"] # <--- NUEVA LLAVE
+MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
 cliente_ia = OpenAI(
     api_key=MI_LLAVE_GEMINI, 

@@ -9,14 +9,15 @@ import base64
 import streamlit.components.v1 as components
 
 # --- LAS LLAVES DE LA NUBE ---
-MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
+MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"] # <--- VOLVEMOS A TU LLAVE DE GROQ
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 MI_LLAVE_ELEVENLABS = st.secrets["MI_LLAVE_ELEVENLABS"]
 
+# Conectamos la tubería a los servidores de Groq
 cliente_ia = OpenAI(
-    api_key=MI_LLAVE_GEMINI, 
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    api_key=MI_LLAVE_GROQ, 
+    base_url="https://api.groq.com/openai/v1" # <--- LA NUEVA RUTA
 )
 
 headers = {
@@ -240,21 +241,19 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 mensajes_completos.append({'role': msg["role"], 'content': content})
 
             try:
-                # 1. Obtenemos el texto de Gemini
+                # ¡EL MOTOR GROQ DE ALTA VELOCIDAD Y VISIÓN!
                 respuesta_nube = cliente_ia.chat.completions.create(
                     messages=mensajes_completos,
-                    model="gemini-2.5-flash", 
+                    model="llama-3.2-90b-vision-preview", 
                 )
                 
                 full_response = respuesta_nube.choices[0].message.content
                 st.markdown(full_response)
                 
-                # 2. SISTEMA DE VOZ PREMIUM (ElevenLabs)
+                # SISTEMA DE VOZ PREMIUM (ElevenLabs)
                 audio_b64 = None
                 try:
                     texto_limpio = full_response.replace("*", "").replace("#", "")
-                    
-                    # ID de la voz "Bella" (femenina, suave, muy natural)
                     VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
                     url_11 = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
                     
@@ -265,7 +264,7 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                     
                     data_11 = {
                         "text": texto_limpio,
-                        "model_id": "eleven_multilingual_v2", # Modelo multilingüe para español perfecto
+                        "model_id": "eleven_multilingual_v2", 
                         "voice_settings": {
                             "stability": 0.5,
                             "similarity_boost": 0.75
@@ -291,4 +290,4 @@ if prompt := st.chat_input("Escribe tu mensaje para Maya...", accept_file=True, 
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"🚨 Error al consultar Gemini: {e}")
+                st.error(f"🚨 Error de motor: {e}")

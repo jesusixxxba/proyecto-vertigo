@@ -19,33 +19,33 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="centered")
+st.set_page_config(page_title="Maya AI", page_icon="🌌", layout="centered")
 
-# Estética IxInteractive + Botón Flotante
+# Estética IxInteractive
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
     .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
     .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; margin-bottom: 0px; }
     
-    /* Estilo para el anclaje de bajada */
+    /* Estilo del botón de bajada (ajustado con más margen) */
     #ir-abajo {
         position: fixed;
-        bottom: 85px;
-        right: 20px;
+        bottom: 100px;
+        right: 30px;
         z-index: 1000;
-        background-color: #30363d;
+        background-color: #1f2937;
         color: #a5d6ff;
-        padding: 8px 12px;
+        padding: 10px 14px;
         border-radius: 50%;
         text-decoration: none;
-        font-size: 20px;
-        border: 1px solid #a5d6ff;
+        font-size: 18px;
+        border: 1px solid #30363d;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
         transition: 0.3s;
     }
-    #ir-abajo:hover { background-color: #a5d6ff; color: #0d1117; }
+    #ir-abajo:hover { background-color: #a5d6ff; color: #0d1117; border-color: #a5d6ff; }
     </style>
-    <a id="ir-abajo" href="#ultimo-mensaje">▼</a>
     """, unsafe_allow_html=True)
 
 # --- Validación de Correo ---
@@ -68,6 +68,9 @@ if "usuario_id" not in st.session_state:
             else:
                 st.error("🚨 Por favor, ingresa un correo válido.")
     st.stop()
+
+# --- SI ESTÁ LOGUEADO, RENDERIZAMOS EL BOTÓN DE BAJADA ---
+st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
 # Inicialización de sesión
 if "chat_actual" not in st.session_state:
@@ -129,17 +132,14 @@ with st.sidebar:
         st.caption("Conectando con historial...")
 
 # ===================== 4. INTERFAZ DE CHAT =====================
-st.title("Hola, soy Maya 🌌")
+st.title("Maya AI 🌌")
 
-SYSTEM_PROMPT = """
-Eres Maya, una inteligencia artificial avanzada de IxInteractive Studios. 
-Eres técnica, directa y eficiente. Ayudas en tareas de desarrollo y mantenimiento de hardware.
-"""
+SYSTEM_PROMPT = "Eres Maya, una IA técnica, directa y eficiente."
 
-# --- SALUDO INICIAL ---
+# --- SALUDO CONVENCIONAL ---
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar="🌌"):
-        st.markdown("👋 **¡Hola!** Soy Maya, tu asistente de **IxInteractive Studios**. ¿En qué puedo ayudarte hoy?")
+        st.markdown("👋 **¡Hola!** Soy Maya. ¿En qué puedo ayudarte hoy?")
 
 # Mostrar historial
 for msg in st.session_state.messages:
@@ -170,5 +170,5 @@ if prompt := st.chat_input("Escribe a Maya..."):
             except Exception as e:
                 st.error(f"🚨 Error: {e}")
 
-# --- ANCLAJE FINAL ---
+# --- ANCLAJE FINAL PARA SCROLL ---
 st.markdown('<div id="ultimo-mensaje"></div>', unsafe_allow_html=True)

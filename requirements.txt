@@ -1,5 +1,4 @@
 streamlit
 requests
 groq
-google-generativeai
 pillow

@@ -101,7 +101,7 @@ if prompt := st.chat_input("Escribe a Maya..."):
             try:
                 # LLAMADA AL MODELO MÁS POTENTE DEL MUNDO (405B)
                 res = cliente_ia.chat.completions.create(
-                    model="Meta-Llama-3.1-405B-Instruct",
+                    model="Meta-Llama-3.3-70B-Instruct",
                     messages=hist,
                     temperature=0.7
                 )

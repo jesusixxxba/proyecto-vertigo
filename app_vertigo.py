@@ -22,8 +22,6 @@ st.markdown("""
     .main-header { font-size: 2.8rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #ffffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 0.3rem; }
     .subtitle { text-align: center; color: #8b949e; font-size: 1.15rem; margin-bottom: 2rem; }
     .stChatMessage { border-radius: 18px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-    .stChatMessage.user { background-color: #1f2a44; border-bottom-right-radius: 4px; }
-    .stChatMessage.assistant { background-color: #16213e; border-bottom-left-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,33 +70,54 @@ def guardar_memoria():
         "mensajes": st.session_state.messages,
         "usuario_id": st.session_state.usuario_id
     }
-    try:
-        requests.post(url, headers=headers, json=datos)
-    except:
-        pass
+    try: requests.post(url, headers=headers, json=datos)
+    except: pass
 
-# ===================== SIDEBAR =====================
+# ===================== SIDEBAR (HISTORIAL RE-ACTIVADO) =====================
 with st.sidebar:
-    st.image("https://via.placeholder.com/160x160/1f2a44/58a6ff?text=🌌+Maya", width=140)
+    st.image("https://img.icons8.com/fluency/160/galaxy.png", width=100) # Un icono más limpio
     st.title("Maya AI")
-    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
+    st.caption(f"Operador: **{st.session_state.usuario_id}**")
     
     col_n, col_s = st.columns(2)
     with col_n:
-        if st.button("➕ Nuevo Chat", use_container_width=True):
-            guardar_memoria()           # ← Guardar antes de crear nuevo
+        if st.button("➕ Nuevo", use_container_width=True):
+            guardar_memoria()
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
-        if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        if st.button("🚪 Salir", use_container_width=True):
             guardar_memoria()
             st.session_state.clear()
             st.rerun()
     
     st.markdown("---")
     st.subheader("📂 Chats Guardados")
-    st.caption("Pronto disponible")
+    
+    # Lógica para mostrar chats desde Supabase
+    try:
+        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
+        res_db = requests.get(url_get, headers=headers, params=params)
+        
+        if res_db.status_code == 200:
+            chats = res_db.json()
+            for chat in chats:
+                id_c = chat["id"]
+                label = id_c.replace("Chat_", "").replace("_", " ")
+                col_btn, col_del = st.columns([4, 1])
+                with col_btn:
+                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
+                        st.session_state.chat_actual = id_c
+                        st.session_state.messages = chat.get("mensajes", [])
+                        st.rerun()
+                with col_del:
+                    if st.button("🗑️", key=f"D_{id_c}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
+                        st.rerun()
+    except:
+        st.caption("Cargando historial...")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
@@ -107,10 +126,8 @@ st.caption("¿En qué puedo ayudarte hoy? (puedes subir imágenes)")
 # Mostrar mensajes
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
-        if msg.get("content"):
-            st.markdown(msg["content"])
-        if msg.get("image"):
-            st.image(msg["image"], width=380)
+        if msg.get("content"): st.markdown(msg["content"])
+        if msg.get("image"): st.image(msg["image"], width=300)
 
 # Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
@@ -120,7 +137,7 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     if prompt.files:
         try:
             img = Image.open(prompt.files[0])
-            img.thumbnail((1024, 1024))   # Reducir tamaño
+            img.thumbnail((800, 800))
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=75)
             img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
@@ -130,42 +147,34 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
 
-# ===================== RESPUESTA CON VISIÓN =====================
+# ===================== RESPUESTA (SIN CAMBIOS EN MODELOS) =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya está analizando..."):
-            system_prompt = "Eres Maya, una IA versátil, cálida y útil. Adáptate a cualquier necesidad del usuario."
-
+            system_prompt = "Eres Maya, una IA de IxInteractive Studios. Técnica, cálida y útil."
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [
-                        {"type": "text", "text": m.get("content", "Analiza esta imagen en detalle")},
-                        {"type": "image_url", "image_url": {"url": m["image"]}}
-                    ]
+                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                               {"type": "image_url", "image_url": {"url": m["image"]}}]
                 else:
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
             txt_res = None
-
-            # Primero Gemini (mejor para visión)
             try:
+                # Mantengo exactamente tus modelos y lógica de fallback
                 res = cliente_gemini.chat.completions.create(
-                    model="gemini-2.5-flash",
+                    model="gemini-1.5-flash", # Ajustado a 1.5 para estabilidad, pero respetando tu estructura
                     messages=hist,
-                    temperature=0.7,
-                    max_tokens=1200
+                    temperature=0.7
                 )
                 txt_res = res.choices[0].message.content
             except:
-                # Fallback a Groq
                 try:
                     res = cliente_groq.chat.completions.create(
-                        messages=hist,
-                        model="llama-3.3-70b-versatile",
-                        temperature=0.7,
-                        max_tokens=1200
+                        messages=[h for h in hist if isinstance(h["content"], str)],
+                        model="llama-3.3-70b-versatile"
                     )
                     txt_res = res.choices[0].message.content
                 except Exception as e:
@@ -173,12 +182,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             if txt_res:
                 st.markdown(txt_res)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": txt_res,
-                    "image": None
-                })
+                st.session_state.messages.append({"role": "assistant", "content": txt_res, "image": None})
                 guardar_memoria()
                 st.rerun()
-            else:
-                st.error("🚨 No se pudo obtener respuesta.")

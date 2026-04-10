@@ -65,17 +65,18 @@ def guardar_memoria():
     if len(st.session_state.messages) == 0:
         return
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    # IMPORTANTE: Usamos 'rol' porque así está en tu Supabase
     datos = {
         "id": st.session_state.chat_actual,
         "mensajes": st.session_state.messages,
-        "usuario_id": st.session_state.usuario_id
+        "rol": st.session_state.usuario_id
     }
     try: requests.post(url, headers=headers, json=datos)
     except: pass
 
-# ===================== SIDEBAR (HISTORIAL RE-ACTIVADO) =====================
+# ===================== SIDEBAR (HISTORIAL REPARADO) =====================
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/160/galaxy.png", width=100) # Un icono más limpio
+    st.image("https://img.icons8.com/fluency/160/galaxy.png", width=100)
     st.title("Maya AI")
     st.caption(f"Operador: **{st.session_state.usuario_id}**")
     
@@ -95,14 +96,16 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📂 Chats Guardados")
     
-    # Lógica para mostrar chats desde Supabase
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        params = {"usuario_id": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
+        # Filtramos por la columna 'rol'
+        params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
         res_db = requests.get(url_get, headers=headers, params=params)
         
         if res_db.status_code == 200:
             chats = res_db.json()
+            if not chats:
+                st.caption("No hay chats guardados aún.")
             for chat in chats:
                 id_c = chat["id"]
                 label = id_c.replace("Chat_", "").replace("_", " ")
@@ -116,12 +119,14 @@ with st.sidebar:
                     if st.button("🗑️", key=f"D_{id_c}"):
                         requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
                         st.rerun()
+        else:
+            st.error("Error al conectar con la DB")
     except:
-        st.caption("Cargando historial...")
+        st.caption("Conectando con historial...")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.caption("¿En qué puedo ayudarte hoy? (puedes subir imágenes)")
+st.caption("¿En qué puedo ayudarte hoy?")
 
 # Mostrar mensajes
 for msg in st.session_state.messages:
@@ -130,7 +135,7 @@ for msg in st.session_state.messages:
         if msg.get("image"): st.image(msg["image"], width=300)
 
 # Entrada del usuario
-if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
+if prompt := st.chat_input("Escribe tu mensaje...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
 
@@ -142,20 +147,20 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
             img.save(buf, format="JPEG", quality=75)
             img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
         except:
-            st.error("No se pudo procesar la imagen")
+            st.error("Error en imagen")
 
     st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
 
-# ===================== RESPUESTA (SIN CAMBIOS EN MODELOS) =====================
+# ===================== RESPUESTA =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está analizando..."):
-            system_prompt = "Eres Maya, una IA de IxInteractive Studios. Técnica, cálida y útil."
+        with st.spinner("Analizando..."):
+            system_prompt = "Eres Maya, una IA de IxInteractive Studios. Técnica y eficiente."
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [{"type": "text", "text": m.get("content", "Analiza esta imagen")},
+                    content = [{"type": "text", "text": m.get("content", "Analiza esto")},
                                {"type": "image_url", "image_url": {"url": m["image"]}}]
                 else:
                     content = m.get("content", "")
@@ -163,9 +168,8 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             txt_res = None
             try:
-                # Mantengo exactamente tus modelos y lógica de fallback
                 res = cliente_gemini.chat.completions.create(
-                    model="gemini-1.5-flash", # Ajustado a 1.5 para estabilidad, pero respetando tu estructura
+                    model="gemini-1.5-flash",
                     messages=hist,
                     temperature=0.7
                 )

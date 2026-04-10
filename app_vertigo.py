@@ -10,7 +10,7 @@ from PIL import Image
 
 # ===================== 1. CONFIGURACIÓN Y LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
-MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]   
+MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]   # ← Asegúrate de tener esta llave
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -174,54 +174,34 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# ===================== ENTRADA CON IMÁGENES =====================
-if prompt := st.chat_input("Escribe una instrucción o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
-    img_url = None
-    txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
+if prompt := st.chat_input("Escribe una instrucción..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
 
-    if prompt.files:
-        try:
-            img = Image.open(prompt.files[0])
-            img.thumbnail((1024, 1024))        # Reducimos tamaño para ahorrar tokens
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=75)
-            img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
-        except Exception as e:
-            st.error(f"Error al procesar la imagen: {e}")
-
-    st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
-    st.rerun()
-
-# ===================== RESPUESTA CON VISIÓN =====================
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Procesando..."):
-            system_prompt = """
-            Eres Maya, una inteligencia artificial técnica y avanzada de IxInteractive Studios.
-            Cuando el usuario suba una imagen, analízala con detalle y responde de forma útil.
-            """
-
-            hist = [{'role': 'system', 'content': system_prompt}] + st.session_state.messages
+            hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
             
             txt = None
             
-            # Primero intentamos Gemini (mejor para visión)
+            # === 1. Primero intentamos con Groq (rápido y barato) ===
             try:
-                res = cliente_gemini.chat.completions.create(
-                    model="gemini-2.5-flash",
+                res = cliente_groq.chat.completions.create(
                     messages=hist,
+                    model="llama-3.3-70b-versatile",
                     temperature=0.7
                 )
                 txt = res.choices[0].message.content
             except:
-                # Fallback a Groq
+                pass
+
+            # === 2. Si Groq falla, usamos Gemini Flash como respaldo ===
+            if not txt:
                 try:
-                    # Convertimos a formato simple para Groq
-                    simple_hist = [{"role": m["role"], "content": m["content"]} 
-                                   for m in st.session_state.messages if isinstance(m.get("content"), str)]
-                    res = cliente_groq.chat.completions.create(
-                        messages=simple_hist,
-                        model="llama-3.3-70b-versatile",
+                    res = cliente_gemini.chat.completions.create(
+                        model="gemini-2.5-flash",      # O prueba "gemini-1.5-flash" si no funciona
+                        messages=hist,
                         temperature=0.7
                     )
                     txt = res.choices[0].message.content

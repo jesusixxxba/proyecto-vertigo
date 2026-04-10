@@ -21,7 +21,7 @@ headers = {
 
 st.set_page_config(page_title="Maya AI | IxInteractive", page_icon="🌌", layout="centered")
 
-# ===================== 2. ESTÉTICA PREMIUM (CSS CORREGIDO) =====================
+# ===================== 2. ESTÉTICA PREMIUM =====================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
@@ -53,7 +53,6 @@ st.markdown("""
         margin-bottom: 15px;
     }
 
-    /* Ajuste de Sidebar para que sea visible */
     [data-testid="stSidebar"] {
         background-color: #010409 !important;
         border-right: 1px solid #30363d;
@@ -83,7 +82,6 @@ st.markdown("""
         color: #0d1117;
     }
 
-    /* Quitamos el bloqueo del header para que aparezca el botón de la sidebar */
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -92,7 +90,7 @@ def es_correo_valido(correo):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return re.match(patron, correo) is not None
 
-# ===================== 3. SISTEMA DE ACCESO (ESPAÑOL) =====================
+# ===================== 3. SISTEMA DE ACCESO =====================
 if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive</h1>', unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #8b949e;'>Diseñado para precisión quirúrgica</p>", unsafe_allow_html=True)
@@ -122,7 +120,7 @@ def guardar_memoria():
     try: requests.post(url, headers=headers, json=datos)
     except: pass
 
-# ===================== 4. SIDEBAR (LOGS DE SISTEMA) =====================
+# ===================== 4. SIDEBAR =====================
 with st.sidebar:
     st.title("Panel de Control")
     st.caption(f"Operador: **{st.session_state.usuario_id}**")
@@ -166,7 +164,14 @@ with st.sidebar:
 # ===================== 5. INTERFAZ DE CHAT =====================
 st.markdown(f'<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 
-SYSTEM_PROMPT = "Eres Maya, una IA de IxInteractive Studios. Técnica y eficiente."
+# PROMPT ACTUALIZADO PARA MODO BETA
+SYSTEM_PROMPT = """
+Eres Maya, una inteligencia artificial técnica y avanzada de IxInteractive Studios.
+REGLA CRÍTICA: Actualmente te encuentras en FASE BETA. 
+No tienes acceso a internet en tiempo real, navegación web, resultados deportivos en vivo o enlaces externos actualizados. 
+Si el usuario solicita enlaces, noticias de hoy o datos en tiempo real, informa amablemente que Maya está en fase Beta y que el módulo de navegación está en mantenimiento o desarrollo. 
+Tu especialidad es la asistencia técnica, lógica y programación con tu base de conocimientos actual.
+"""
 
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar="🌌"):

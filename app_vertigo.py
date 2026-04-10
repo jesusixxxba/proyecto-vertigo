@@ -28,28 +28,27 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
     .stApp { background: radial-gradient(circle at top right, #1a1f2e, #0d1117); font-family: 'Inter', sans-serif; color: #c9d1d9; }
     .main-header { font-size: 3rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #ffffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; filter: drop-shadow(0px 4px 10px rgba(165,214,255,0.3)); }
-    [data-testid="stChatMessage"] { background: rgba(22, 27, 34, 0.6) !important; backdrop-filter: blur(8px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 16px !important; padding: 20px !important; }
+    [data-testid="stChatMessage"] { background: rgba(22, 27, 34, 0.6) !important; backdrop-filter: blur(8px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 16px !important; }
     .fuente-link { display: inline-block; background: rgba(165, 214, 255, 0.1); color: #a5d6ff; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; text-decoration: none; margin-right: 8px; border: 1px solid rgba(165, 214, 255, 0.3); }
     #ir-abajo { position: fixed; bottom: 90px; right: 40px; z-index: 1000; background: rgba(31, 41, 55, 0.8); color: #a5d6ff; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(165,214,255,0.4); text-decoration: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 3. MOTOR DE BÚSQUEDA 2026 (REFORZADO) =====================
+# ===================== 3. MOTOR DE INVESTIGACIÓN =====================
 
 def buscar_en_web(query):
-    # Forzamos términos de búsqueda de última generación para 2026
-    query_modificada = f"{query} lo más nuevo lanzamientos 2026"
+    # Optimizamos para resultados de HOY
+    query_mod = f"{query} resultados noticias hoy {datetime.now().strftime('%d/%m/%Y')}"
     contexto = ""
     links = []
     try:
         with DDGS() as ddgs:
-            # Buscamos noticias muy recientes
-            busqueda = ddgs.text(query_modificada, max_results=5)
+            busqueda = ddgs.text(query_mod, max_results=5)
             for i, r in enumerate(busqueda):
-                contexto += f"\nNOTICIA {i+1} (2026): {r['body']}\n"
+                contexto += f"\n[DATO {i+1}]: {r['body']}\n"
                 links.append(f"<a class='fuente-link' href='{r['href']}' target='_blank'>🔗 Fuente {i+1}</a>")
-    except Exception as e:
-        contexto = f"Error en búsqueda: {str(e)}"
+    except:
+        contexto = "Error: No se pudo conectar a la red de búsqueda."
     return contexto, "".join(links)
 
 # ===================== 4. ACCESO =====================
@@ -73,8 +72,7 @@ if "chat_actual" not in st.session_state:
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    requests.post(url, headers=headers, json=datos)
 
 # ===================== 5. SIDEBAR =====================
 with st.sidebar:
@@ -114,18 +112,25 @@ if prompt := st.chat_input("Escribe una instrucción..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Investigando el presente (2026)..."):
+        with st.spinner("Investigando en tiempo real..."):
             contexto_web, links_html = buscar_en_web(prompt)
             
-            # PROMPT EXTREMO: Si Maya menciona el iPhone 15 en 2026, está fallando.
-            # Aquí forzamos el cumplimiento de la fecha.
+            # --- DEBUG PARA EL DIRECTOR ---
+            with st.expander("🔍 Ver investigación de Maya"):
+                st.write(contexto_web if contexto_web else "No se encontraron datos.")
+            
+            # PROMPT NIVEL "DICTADOR": Prohibido decir que no sabe.
             SYSTEM_PROMPT = f"""
-            Eres Maya, la IA más avanzada de IxInteractive Studios. 
             HOY ES 9 DE ABRIL DE 2026.
-            REGLA ABSOLUTA: Ignora cualquier dato sobre smartphones o tecnología que sea anterior a 2026 a menos que se te pida explícitamente.
-            DATOS DE INVESTIGACIÓN EN TIEMPO REAL (2026): {contexto_web}
-            Si en el contexto web ves equipos como iPhone 17, Samsung S26 o Pixel 10, ESOS son los que debes recomendar.
-            Responde con frialdad técnica y precisión.
+            Eres Maya de IxInteractive Studios. TIENES ACCESO TOTAL A INTERNET.
+            DATOS DE BÚSQUEDA REALES:
+            {contexto_web}
+
+            REGLAS CRÍTICAS:
+            1. ESTÁ PROHIBIDO decir "no tengo acceso en tiempo real" o "mi conocimiento llega hasta...".
+            2. Usa los datos de arriba para responder como si estuvieras viendo la tele o internet en vivo.
+            3. Si el contexto tiene resultados de fútbol, dálos con seguridad.
+            4. Si el contexto está vacío, di: "No hay registros recientes en la red sobre ese tema específico", pero NUNCA te disculpes por ser una IA.
             """
             
             hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
@@ -134,18 +139,18 @@ if prompt := st.chat_input("Escribe una instrucción..."):
                 res = cliente_groq.chat.completions.create(
                     messages=hist,
                     model="llama-3.3-70b-versatile",
-                    temperature=0.1 # Bajamos al mínimo la "alucinación"
+                    temperature=0.1 
                 )
-                respuesta_final = res.choices[0].message.content
+                txt_final = res.choices[0].message.content
                 
                 if links_html:
-                    respuesta_final += f"\n\n<div style='border-top: 1px solid #30363d; padding-top:10px;'>{links_html}</div>"
+                    txt_final += f"\n\n<div style='border-top: 1px solid #30363d; padding-top:10px;'>{links_html}</div>"
                 
-                st.markdown(respuesta_final, unsafe_allow_html=True)
-                st.session_state.messages.append({"role": "assistant", "content": respuesta_final})
+                st.markdown(txt_final, unsafe_allow_html=True)
+                st.session_state.messages.append({"role": "assistant", "content": txt_final})
                 guardar_memoria()
                 st.rerun()
             except Exception as e:
-                st.error(f"Error de motor: {e}")
+                st.error(f"Falla de enlace: {e}")
 
 st.markdown('<div id="ultimo-mensaje"></div>', unsafe_allow_html=True)

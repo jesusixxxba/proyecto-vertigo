@@ -34,19 +34,19 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 3. MOTOR DE BÚSQUEDA 2026 =====================
+# ===================== 3. MOTOR DE BÚSQUEDA 2026 (REFORZADO) =====================
 
 def buscar_en_web(query):
-    # Forzamos la búsqueda al año actual
-    query_modificada = f"{query} lanzamientos y precios abril 2026"
+    # Forzamos términos de búsqueda de última generación para 2026
+    query_modificada = f"{query} lo más nuevo lanzamientos 2026"
     contexto = ""
     links = []
     try:
         with DDGS() as ddgs:
-            # Buscamos resultados frescos
+            # Buscamos noticias muy recientes
             busqueda = ddgs.text(query_modificada, max_results=5)
             for i, r in enumerate(busqueda):
-                contexto += f"\nNOTICIA {i+1}: {r['body']}\n"
+                contexto += f"\nNOTICIA {i+1} (2026): {r['body']}\n"
                 links.append(f"<a class='fuente-link' href='{r['href']}' target='_blank'>🔗 Fuente {i+1}</a>")
     except Exception as e:
         contexto = f"Error en búsqueda: {str(e)}"
@@ -100,33 +100,32 @@ with st.sidebar:
 st.markdown('<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
-# Saludo inicial si no hay mensajes
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar="🌌"):
         st.markdown("👋 **Sistemas listos.** Soy Maya. ¿Cuál es el objetivo de hoy?")
 
-# Dibujar historial
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
-# Procesar entrada
 if prompt := st.chat_input("Escribe una instrucción..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Investigando lanzamientos 2026..."):
+        with st.spinner("Investigando el presente (2026)..."):
             contexto_web, links_html = buscar_en_web(prompt)
             
-            # PROMPT ULTRA-AGRESIVO PARA EVITAR DESACTUALIZACIÓN
+            # PROMPT EXTREMO: Si Maya menciona el iPhone 15 en 2026, está fallando.
+            # Aquí forzamos el cumplimiento de la fecha.
             SYSTEM_PROMPT = f"""
-            Eres Maya de IxInteractive Studios. FECHA ACTUAL: 9 de Abril de 2026.
-            REGLA DE ORO: Ignora tus datos de entrenamiento si contradicen la realidad de 2026. 
-            No recomiendes hardware de años anteriores (S23, iPhone 14, etc.) a menos que el usuario lo pida.
-            DATOS REALES DE LA WEB (2026): {contexto_web}
-            Usa el contexto web para dar una respuesta moderna y precisa.
+            Eres Maya, la IA más avanzada de IxInteractive Studios. 
+            HOY ES 9 DE ABRIL DE 2026.
+            REGLA ABSOLUTA: Ignora cualquier dato sobre smartphones o tecnología que sea anterior a 2026 a menos que se te pida explícitamente.
+            DATOS DE INVESTIGACIÓN EN TIEMPO REAL (2026): {contexto_web}
+            Si en el contexto web ves equipos como iPhone 17, Samsung S26 o Pixel 10, ESOS son los que debes recomendar.
+            Responde con frialdad técnica y precisión.
             """
             
             hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
@@ -135,7 +134,7 @@ if prompt := st.chat_input("Escribe una instrucción..."):
                 res = cliente_groq.chat.completions.create(
                     messages=hist,
                     model="llama-3.3-70b-versatile",
-                    temperature=0.2 # Mínima creatividad, máxima precisión de datos
+                    temperature=0.1 # Bajamos al mínimo la "alucinación"
                 )
                 respuesta_final = res.choices[0].message.content
                 

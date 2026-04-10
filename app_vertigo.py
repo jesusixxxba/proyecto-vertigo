@@ -18,7 +18,7 @@ SYSTEM_PROMPT = "Eres Maya, una inteligencia artificial avanzada de IxInteractiv
 
 # Crear el modelo con instrucciones del sistema
 modelo = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-3-flash",
     system_instruction=SYSTEM_PROMPT
 )
 

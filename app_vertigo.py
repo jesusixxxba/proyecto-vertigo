@@ -86,11 +86,13 @@ with st.sidebar:
     col_n, col_s = st.columns(2)
     with col_n:
         if st.button("➕ Nuevo Chat", use_container_width=True):
+            guardar_memoria()           # ← Guardar antes de crear nuevo
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            guardar_memoria()
             st.session_state.clear()
             st.rerun()
     
@@ -118,8 +120,7 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     if prompt.files:
         try:
             img = Image.open(prompt.files[0])
-            # Reducimos tamaño para ahorrar tokens
-            img.thumbnail((1024, 1024))
+            img.thumbnail((1024, 1024))   # Reducir tamaño
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=75)
             img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
@@ -148,17 +149,17 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             txt_res = None
 
-            # Primero intentamos con Gemini (mejor para visión)
+            # Primero Gemini (mejor para visión)
             try:
                 res = cliente_gemini.chat.completions.create(
-                    model="gemini-2.5-flash",        # o "gemini-1.5-flash"
+                    model="gemini-2.5-flash",
                     messages=hist,
                     temperature=0.7,
                     max_tokens=1200
                 )
                 txt_res = res.choices[0].message.content
             except:
-                # Fallback a Groq si Gemini falla
+                # Fallback a Groq
                 try:
                     res = cliente_groq.chat.completions.create(
                         messages=hist,
@@ -180,4 +181,4 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 guardar_memoria()
                 st.rerun()
             else:
-                st.error("🚨 No se pudo procesar la solicitud.")
+                st.error("🚨 No se pudo obtener respuesta.")

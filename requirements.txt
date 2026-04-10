@@ -1,4 +1,4 @@
 streamlit
 requests
 groq
-duckduckgo-search
+tavily-python

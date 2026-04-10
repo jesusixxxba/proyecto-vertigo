@@ -34,22 +34,23 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 3. MOTOR DE INVESTIGACIÓN =====================
+# ===================== 3. MOTOR DE BÚSQUEDA 2026 =====================
 
 def buscar_en_web(query):
-    """Busca información forzando el contexto de 2026."""
-    # Optimizamos la consulta para que DuckDuckGo traiga lo más reciente
-    query_optimizada = f"{query} actualidad 2026"
-    resultados_texto = ""
-    enlaces = []
+    # Forzamos la búsqueda al año actual
+    query_modificada = f"{query} lanzamientos y precios abril 2026"
+    contexto = ""
+    links = []
     try:
         with DDGS() as ddgs:
-            busqueda = ddgs.text(query_optimizada, max_results=4)
+            # Buscamos resultados frescos
+            busqueda = ddgs.text(query_modificada, max_results=5)
             for i, r in enumerate(busqueda):
-                resultados_texto += f"\n[Fuente {i+1}]: {r['body']}\n"
-                enlaces.append(f"<a class='fuente-link' href='{r['href']}' target='_blank'>🔗 Fuente {i+1}</a>")
-    except: pass
-    return resultados_texto, "".join(enlaces)
+                contexto += f"\nNOTICIA {i+1}: {r['body']}\n"
+                links.append(f"<a class='fuente-link' href='{r['href']}' target='_blank'>🔗 Fuente {i+1}</a>")
+    except Exception as e:
+        contexto = f"Error en búsqueda: {str(e)}"
+    return contexto, "".join(links)
 
 # ===================== 4. ACCESO =====================
 if "usuario_id" not in st.session_state:
@@ -72,12 +73,13 @@ if "chat_actual" not in st.session_state:
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
-    requests.post(url, headers=headers, json=datos)
+    try: requests.post(url, headers=headers, json=datos)
+    except: pass
 
 # ===================== 5. SIDEBAR =====================
 with st.sidebar:
     st.title("Panel de Control")
-    if st.button("➕ Nuevo", use_container_width=True):
+    if st.button("➕ Nuevo Chat", use_container_width=True):
         st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
         st.session_state.messages = []
         st.rerun()
@@ -98,25 +100,33 @@ with st.sidebar:
 st.markdown('<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
+# Saludo inicial si no hay mensajes
+if not st.session_state.messages:
+    with st.chat_message("assistant", avatar="🌌"):
+        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿Cuál es el objetivo de hoy?")
+
+# Dibujar historial
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
+# Procesar entrada
 if prompt := st.chat_input("Escribe una instrucción..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Investigando en tiempo real..."):
+        with st.spinner("Investigando lanzamientos 2026..."):
             contexto_web, links_html = buscar_en_web(prompt)
             
-            # SYSTEM PROMPT BLINDADO: Obligamos a LLaMA a ignorar su base de datos vieja
+            # PROMPT ULTRA-AGRESIVO PARA EVITAR DESACTUALIZACIÓN
             SYSTEM_PROMPT = f"""
-            Eres Maya, una IA de IxInteractive Studios. Hoy es 9 de abril de 2026.
-            REGLA CRÍTICA: Prioriza la información del CONTEXTO WEB sobre tus datos internos.
-            CONTEXTO WEB RECIENTE (2026): {contexto_web}
-            Si el usuario pregunta por hardware o tecnología, usa solo los datos del contexto web.
+            Eres Maya de IxInteractive Studios. FECHA ACTUAL: 9 de Abril de 2026.
+            REGLA DE ORO: Ignora tus datos de entrenamiento si contradicen la realidad de 2026. 
+            No recomiendes hardware de años anteriores (S23, iPhone 14, etc.) a menos que el usuario lo pida.
+            DATOS REALES DE LA WEB (2026): {contexto_web}
+            Usa el contexto web para dar una respuesta moderna y precisa.
             """
             
             hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
@@ -125,7 +135,7 @@ if prompt := st.chat_input("Escribe una instrucción..."):
                 res = cliente_groq.chat.completions.create(
                     messages=hist,
                     model="llama-3.3-70b-versatile",
-                    temperature=0.3 # Bajamos la temperatura para mayor precisión técnica
+                    temperature=0.2 # Mínima creatividad, máxima precisión de datos
                 )
                 respuesta_final = res.choices[0].message.content
                 

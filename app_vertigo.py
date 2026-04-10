@@ -22,6 +22,8 @@ st.markdown("""
     .main-header { font-size: 2.8rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #ffffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 0.3rem; }
     .subtitle { text-align: center; color: #8b949e; font-size: 1.15rem; margin-bottom: 2rem; }
     .stChatMessage { border-radius: 18px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .stChatMessage.user { background-color: #1f2a44; border-bottom-right-radius: 4px; }
+    .stChatMessage.assistant { background-color: #16213e; border-bottom-left-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,120 +67,106 @@ def guardar_memoria():
     if len(st.session_state.messages) == 0:
         return
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    # IMPORTANTE: Usamos 'rol' porque así está en tu Supabase
     datos = {
         "id": st.session_state.chat_actual,
         "mensajes": st.session_state.messages,
-        "rol": st.session_state.usuario_id
+        "usuario_id": st.session_state.usuario_id
     }
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    try:
+        requests.post(url, headers=headers, json=datos)
+    except:
+        pass
 
-# ===================== SIDEBAR (HISTORIAL REPARADO) =====================
+# ===================== SIDEBAR =====================
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/160/galaxy.png", width=100)
+    st.image("https://via.placeholder.com/160x160/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
-    st.caption(f"Operador: **{st.session_state.usuario_id}**")
+    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
     
     col_n, col_s = st.columns(2)
     with col_n:
-        if st.button("➕ Nuevo", use_container_width=True):
-            guardar_memoria()
+        if st.button("➕ Nuevo Chat", use_container_width=True):
+            guardar_memoria()                    # Guarda antes de crear nuevo
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
-        if st.button("🚪 Salir", use_container_width=True):
+        if st.button("🚪 Cerrar Sesión", use_container_width=True):
             guardar_memoria()
             st.session_state.clear()
             st.rerun()
     
     st.markdown("---")
     st.subheader("📂 Chats Guardados")
-    
-    try:
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        # Filtramos por la columna 'rol'
-        params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
-        res_db = requests.get(url_get, headers=headers, params=params)
-        
-        if res_db.status_code == 200:
-            chats = res_db.json()
-            if not chats:
-                st.caption("No hay chats guardados aún.")
-            for chat in chats:
-                id_c = chat["id"]
-                label = id_c.replace("Chat_", "").replace("_", " ")
-                col_btn, col_del = st.columns([4, 1])
-                with col_btn:
-                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
-                        st.session_state.chat_actual = id_c
-                        st.session_state.messages = chat.get("mensajes", [])
-                        st.rerun()
-                with col_del:
-                    if st.button("🗑️", key=f"D_{id_c}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
-                        st.rerun()
-        else:
-            st.error("Error al conectar con la DB")
-    except:
-        st.caption("Conectando con historial...")
+    st.caption("Pronto disponible")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
-st.caption("¿En qué puedo ayudarte hoy?")
+st.caption("¿En qué puedo ayudarte hoy? (puedes subir imágenes)")
 
 # Mostrar mensajes
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌌"):
-        if msg.get("content"): st.markdown(msg["content"])
-        if msg.get("image"): st.image(msg["image"], width=300)
+        if msg.get("content"):
+            st.markdown(msg["content"])
+        if msg.get("image"):
+            st.image(msg["image"], width=380)
 
 # Entrada del usuario
-if prompt := st.chat_input("Escribe tu mensaje...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
+if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
 
     if prompt.files:
         try:
             img = Image.open(prompt.files[0])
-            img.thumbnail((800, 800))
+            img.thumbnail((1024, 1024))           # Reducir tamaño para ahorrar tokens
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=75)
             img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
         except:
-            st.error("Error en imagen")
+            st.error("No se pudo procesar la imagen")
 
     st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
 
-# ===================== RESPUESTA =====================
+# ===================== RESPUESTA CON VISIÓN =====================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Analizando..."):
-            system_prompt = "Eres Maya, una IA de IxInteractive Studios. Técnica y eficiente."
+        with st.spinner("Maya está analizando..."):
+            system_prompt = "Eres Maya, una IA versátil, cálida y útil. Adáptate a cualquier necesidad del usuario."
+
             hist = [{"role": "system", "content": system_prompt}]
             for m in st.session_state.messages:
                 if m.get("image"):
-                    content = [{"type": "text", "text": m.get("content", "Analiza esto")},
-                               {"type": "image_url", "image_url": {"url": m["image"]}}]
+                    content = [
+                        {"type": "text", "text": m.get("content", "Analiza esta imagen en detalle")},
+                        {"type": "image_url", "image_url": {"url": m["image"]}}
+                    ]
                 else:
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
             txt_res = None
+
+            # Primero intentamos Gemini (mejor para visión)
             try:
                 res = cliente_gemini.chat.completions.create(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.5-flash",      # Cambia a "gemini-1.5-flash" si no funciona
                     messages=hist,
-                    temperature=0.7
+                    temperature=0.7,
+                    max_tokens=1200
                 )
                 txt_res = res.choices[0].message.content
             except:
+                # Fallback a Groq
                 try:
                     res = cliente_groq.chat.completions.create(
-                        messages=[h for h in hist if isinstance(h["content"], str)],
-                        model="llama-3.3-70b-versatile"
+                        messages=[{"role": h["role"], "content": h["content"]} 
+                                  for h in hist if isinstance(h["content"], str)],
+                        model="llama-3.3-70b-versatile",
+                        temperature=0.7,
+                        max_tokens=1200
                     )
                     txt_res = res.choices[0].message.content
                 except Exception as e:
@@ -186,6 +174,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             if txt_res:
                 st.markdown(txt_res)
-                st.session_state.messages.append({"role": "assistant", "content": txt_res, "image": None})
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": txt_res,
+                    "image": None
+                })
                 guardar_memoria()
                 st.rerun()
+            else:
+                st.error("🚨 No se pudo obtener respuesta.")

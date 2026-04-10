@@ -4,8 +4,9 @@ import requests
 import re
 from datetime import datetime
 from groq import Groq
+from duckduckgo_search import DDGS # <--- Nueva herramienta de búsqueda
 
-# ===================== 1. CONFIGURACIÓN Y LLAVES =====================
+# ===================== 1. CONFIGURACIÓN =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -21,7 +22,7 @@ headers = {
 
 st.set_page_config(page_title="Maya AI | IxInteractive", page_icon="🌌", layout="centered")
 
-# ===================== 2. ESTÉTICA PREMIUM (CSS CORREGIDO) =====================
+# ===================== 2. ESTÉTICA PREMIUM =====================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
@@ -49,14 +50,19 @@ st.markdown("""
         border: 1px solid rgba(48, 54, 61, 0.8);
         border-radius: 16px !important;
         padding: 20px !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        margin-bottom: 15px;
     }
 
-    /* Ajuste de Sidebar para que sea visible */
-    [data-testid="stSidebar"] {
-        background-color: #010409 !important;
-        border-right: 1px solid #30363d;
+    /* Estilo de los enlaces de respaldo */
+    .fuente-link {
+        display: inline-block;
+        background: rgba(165, 214, 255, 0.1);
+        color: #a5d6ff;
+        padding: 2px 8px;
+        border-radius: 5px;
+        font-size: 0.8rem;
+        text-decoration: none;
+        margin-right: 5px;
+        border: 1px solid rgba(165, 214, 255, 0.3);
     }
 
     #ir-abajo {
@@ -75,42 +81,41 @@ st.markdown("""
         border-radius: 50%;
         text-decoration: none;
         border: 1px solid rgba(165, 214, 255, 0.4);
-        transition: all 0.3s ease;
     }
-    #ir-abajo:hover {
-        transform: translateY(-5px);
-        background: #a5d6ff;
-        color: #0d1117;
-    }
-
-    /* Quitamos el bloqueo del header para que aparezca el botón de la sidebar */
-    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-def es_correo_valido(correo):
-    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(patron, correo) is not None
+# ===================== 3. HERRAMIENTAS DE BÚSQUEDA =====================
 
-# ===================== 3. SISTEMA DE ACCESO (ESPAÑOL) =====================
+def buscar_en_web(query):
+    """Realiza una búsqueda rápida y devuelve contexto + links."""
+    resultados_texto = ""
+    enlaces = []
+    try:
+        with DDGS() as ddgs:
+            # Buscamos los 3 mejores resultados
+            busqueda = ddgs.text(query, max_results=3)
+            for i, r in enumerate(busqueda):
+                resultados_texto += f"\nFuente {i+1}: {r['body']}\n"
+                enlaces.append(f"<a class='fuente-link' href='{r['href']}' target='_blank'>🔗 Fuente {i+1}</a>")
+    except:
+        pass
+    return resultados_texto, "".join(enlaces)
+
+# ===================== 4. ACCESO Y SESIÓN =====================
 if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive</h1>', unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #8b949e;'>Diseñado para precisión quirúrgica</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        with st.form("login_form"):
-            correo_input = st.text_input("✉️ Credencial de acceso:", placeholder="usuario@ixinteractive.com")
-            if st.form_submit_button("Sincronizar Sistema", use_container_width=True):
-                correo_limpio = correo_input.strip().lower()
-                if es_correo_valido(correo_limpio):
-                    st.session_state.usuario_id = correo_limpio
-                    st.rerun()
-                else:
-                    st.error("🚨 Acceso denegado: Credencial inválida.")
+    with st.container():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.form("login_form"):
+                correo_input = st.text_input("✉️ Credencial de acceso:", placeholder="usuario@ixinteractive.com")
+                if st.form_submit_button("Sincronizar Sistema", use_container_width=True):
+                    if correo_input:
+                        st.session_state.usuario_id = correo_input.strip().lower()
+                        st.rerun()
     st.stop()
-
-st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
@@ -119,63 +124,41 @@ if "chat_actual" not in st.session_state:
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
     datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    requests.post(url, headers=headers, json=datos)
 
-# ===================== 4. SIDEBAR (LOGS DE SISTEMA) =====================
+# ===================== 5. SIDEBAR =====================
 with st.sidebar:
     st.title("Panel de Control")
-    st.caption(f"Operador: **{st.session_state.usuario_id}**")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("➕ Nuevo", use_container_width=True):
-            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-            st.session_state.messages = []
-            st.rerun()
-    with c2:
-        if st.button("🚪 Salir", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-            
+    if st.button("➕ Nuevo", use_container_width=True):
+        st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
+        st.session_state.messages = []
+        st.rerun()
+    if st.button("🚪 Salir", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
     st.markdown("---")
-    st.subheader("📂 Historial de Chats")
-    
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
         params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
         res_db = requests.get(url_get, headers=headers, params=params)
-        
-        if res_db.status_code == 200:
-            for chat in res_db.json():
-                id_c = chat["id"]
-                label = id_c.replace("Chat_", "").replace("_", " ")
-                col_b, col_d = st.columns([4, 1])
-                with col_b:
-                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
-                        st.session_state.chat_actual = id_c
-                        st.session_state.messages = chat.get("mensajes", [])
-                        st.rerun()
-                with col_d:
-                    if st.button("🗑️", key=f"D_{id_c}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
-                        st.rerun()
-    except:
-        st.caption("Error de enlace...")
+        for chat in res_db.json():
+            if st.button(f"💬 {chat['id'][5:16]}", key=chat['id'], use_container_width=True):
+                st.session_state.chat_actual = chat['id']
+                st.session_state.messages = chat['mensajes']
+                st.rerun()
+    except: pass
 
-# ===================== 5. INTERFAZ DE CHAT =====================
-st.markdown(f'<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
-
-SYSTEM_PROMPT = "Eres Maya, una IA de IxInteractive Studios. Técnica y eficiente."
+# ===================== 6. INTERFAZ DE CHAT =====================
+st.markdown('<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
+st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar="🌌"):
-        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿En qué puedo ayudarte hoy?")
+        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿Cuál es el objetivo de hoy?")
 
 for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"] == "user" else "🌌"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
+    with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
+        st.markdown(msg["content"], unsafe_allow_html=True)
 
 if prompt := st.chat_input("Escribe una instrucción..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -183,17 +166,33 @@ if prompt := st.chat_input("Escribe una instrucción..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Procesando..."):
+        with st.spinner("Investigando y procesando..."):
+            # PASO CLAVE: Búsqueda Web
+            contexto_web, links_html = buscar_en_web(prompt)
+            
+            # Construir el Prompt con el contexto encontrado
+            SYSTEM_PROMPT = f"""
+            Eres Maya, una IA de IxInteractive Studios. 
+            CONTEXTO WEB ACTUALIZADO: {contexto_web}
+            Responde de forma técnica y breve. Si usaste la información web, menciona que te basaste en fuentes externas.
+            """
+            
             hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+            
             try:
                 res = cliente_groq.chat.completions.create(
                     messages=hist,
                     model="llama-3.3-70b-versatile",
-                    temperature=0.7
+                    temperature=0.6
                 )
-                txt = res.choices[0].message.content
-                st.markdown(txt)
-                st.session_state.messages.append({"role": "assistant", "content": txt})
+                respuesta_final = res.choices[0].message.content
+                
+                # Añadir los links al final de la burbuja
+                if links_html:
+                    respuesta_final += f"\n\n<p style='margin-top:10px;'>{links_html}</p>"
+                
+                st.markdown(respuesta_final, unsafe_allow_html=True)
+                st.session_state.messages.append({"role": "assistant", "content": respuesta_final})
                 guardar_memoria()
                 st.rerun()
             except Exception as e:

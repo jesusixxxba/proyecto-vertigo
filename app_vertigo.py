@@ -1,16 +1,24 @@
 import streamlit as st
-import json
 import requests
 import re
 from datetime import datetime
 from groq import Groq
+from openai import OpenAI   # ← Para usar Gemini
+import io
+import base64
+from PIL import Image
 
 # ===================== 1. CONFIGURACIÓN Y LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
+MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]   # ← Asegúrate de tener esta llave
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
+cliente_gemini = OpenAI(
+    api_key=MI_LLAVE_GEMINI, 
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -58,30 +66,6 @@ st.markdown("""
         border-right: 1px solid #30363d;
     }
 
-    #ir-abajo {
-        position: fixed;
-        bottom: 90px;
-        right: 40px;
-        z-index: 1000;
-        background: rgba(31, 41, 55, 0.8);
-        backdrop-filter: blur(4px);
-        color: #a5d6ff;
-        width: 45px;
-        height: 45px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        text-decoration: none;
-        border: 1px solid rgba(165, 214, 255, 0.4);
-        transition: all 0.3s ease;
-    }
-    #ir-abajo:hover {
-        transform: translateY(-5px);
-        background: #a5d6ff;
-        color: #0d1117;
-    }
-
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -108,17 +92,21 @@ if "usuario_id" not in st.session_state:
                     st.error("🚨 Acceso denegado: Credencial inválida.")
     st.stop()
 
-st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
-
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    datos = {
+        "id": st.session_state.chat_actual, 
+        "mensajes": st.session_state.messages, 
+        "rol": st.session_state.usuario_id 
+    }
+    try: 
+        requests.post(url, headers=headers, json=datos)
+    except: 
+        pass
 
 # ===================== 4. SIDEBAR =====================
 with st.sidebar:
@@ -155,16 +143,20 @@ with st.sidebar:
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
                 with col_d:
-                    if st.button("🗑️", key=f"D_{id_c}"):
+                    if st.button("❌", key=f"D_{id_c}"):
                         requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
+                        if st.session_state.chat_actual == id_c:
+                            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
+                            st.session_state.messages = []
                         st.rerun()
+        else:
+            st.sidebar.warning("Aún no tienes chats guardados.")
     except:
-        st.caption("Error de enlace...")
+        st.sidebar.error("Error conectando a la base de datos.")
 
 # ===================== 5. INTERFAZ DE CHAT =====================
 st.markdown(f'<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 
-# PROMPT ACTUALIZADO PARA MODO BETA
 SYSTEM_PROMPT = """
 Eres Maya, una inteligencia artificial técnica y avanzada de IxInteractive Studios.
 REGLA CRÍTICA: Actualmente te encuentras en FASE BETA. 
@@ -190,6 +182,10 @@ if prompt := st.chat_input("Escribe una instrucción..."):
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Procesando..."):
             hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+            
+            txt = None
+            
+            # === 1. Primero intentamos con Groq (rápido y barato) ===
             try:
                 res = cliente_groq.chat.completions.create(
                     messages=hist,
@@ -197,11 +193,25 @@ if prompt := st.chat_input("Escribe una instrucción..."):
                     temperature=0.7
                 )
                 txt = res.choices[0].message.content
+            except:
+                pass
+
+            # === 2. Si Groq falla, usamos Gemini Flash como respaldo ===
+            if not txt:
+                try:
+                    res = cliente_gemini.chat.completions.create(
+                        model="gemini-2.5-flash",      # O prueba "gemini-1.5-flash" si no funciona
+                        messages=hist,
+                        temperature=0.7
+                    )
+                    txt = res.choices[0].message.content
+                except Exception as e:
+                    st.error(f"Error en ambos modelos: {str(e)}")
+
+            if txt:
                 st.markdown(txt)
                 st.session_state.messages.append({"role": "assistant", "content": txt})
                 guardar_memoria()
                 st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-st.markdown('<div id="ultimo-mensaje"></div>', unsafe_allow_html=True)
+            else:
+                st.error("🚨 No se pudo obtener respuesta de ningún modelo.")

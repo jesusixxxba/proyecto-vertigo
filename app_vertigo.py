@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import re
 from datetime import datetime
-from openai import OpenAI
+from groq import Groq
 import io
 import base64
 from PIL import Image
@@ -28,12 +28,10 @@ st.markdown("""
 
 # ===================== LLAVES =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
-MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-cliente_groq = OpenAI(api_key=MI_LLAVE_GROQ, base_url="https://api.groq.com/openai/v1")
-cliente_gemini = OpenAI(api_key=MI_LLAVE_GEMINI, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -62,7 +60,6 @@ if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
 
-# ===================== FUNCIÓN PARA GUARDAR =====================
 def guardar_memoria():
     if len(st.session_state.messages) == 0:
         return
@@ -77,10 +74,10 @@ def guardar_memoria():
         if response.status_code in [200, 201]:
             return True
         else:
-            st.toast(f"Error al guardar chat: {response.status_code}", icon="⚠️")
+            st.toast(f"Error al guardar: {response.status_code}", icon="⚠️")
             return False
     except Exception as e:
-        st.toast(f"Error de conexión con Supabase: {str(e)}", icon="❌")
+        st.toast(f"Error de conexión: {str(e)}", icon="❌")
         return False
 
 # ===================== SIDEBAR =====================
@@ -92,7 +89,7 @@ with st.sidebar:
     col_n, col_s = st.columns(2)
     with col_n:
         if st.button("➕ Nuevo Chat", use_container_width=True):
-            guardar_memoria()                    # ← CLAVE: Guardar antes de crear nuevo
+            guardar_memoria()
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
@@ -120,7 +117,7 @@ with st.sidebar:
                 col_btn, col_del = st.columns([4, 1])
                 with col_btn:
                     if st.button(f"💬 {label}", key=f"load_{chat_id}", use_container_width=True):
-                        guardar_memoria()           # Guardar actual antes de cambiar
+                        guardar_memoria()
                         st.session_state.chat_actual = chat_id
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
@@ -143,7 +140,7 @@ for msg in st.session_state.messages:
         if msg.get("image"):
             st.image(msg["image"], width=380)
 
-# Entrada
+# Entrada del usuario
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -177,30 +174,22 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     content = m.get("content", "")
                 hist.append({"role": m["role"], "content": content})
 
-            opciones = [
-                {"cliente": cliente_groq, "modelo": "llama-3.3-70b-versatile"},
-                {"cliente": cliente_gemini, "modelo": "gemini-2.5-flash"},
-            ]
-
-            txt_res = None
-            for op in opciones:
-                try:
-                    res = op["cliente"].chat.completions.create(
-                        model=op["modelo"], messages=hist, temperature=0.78, max_tokens=1200
-                    )
-                    txt_res = res.choices[0].message.content
-                    break
-                except:
-                    continue
-
-            if txt_res:
+            try:
+                respuesta_nube = cliente_groq.chat.completions.create(
+                    messages=hist,
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.78,
+                    max_tokens=1200
+                )
+                txt_res = respuesta_nube.choices[0].message.content
+                
                 st.markdown(txt_res)
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": txt_res,
                     "image": None
                 })
-                guardar_memoria()   # Guardar después de cada respuesta
+                guardar_memoria()
                 st.rerun()
-            else:
-                st.error("🚨 No se pudo obtener respuesta.")
+            except Exception as e:
+                st.error(f"Error al generar respuesta: {str(e)}")

@@ -3,24 +3,14 @@ import json
 import requests
 import re
 from datetime import datetime
-import google.generativeai as genai
+from groq import Groq
 
-# ===================== 1. CONFIGURACIÓN Y LLAVES =====================
-MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
+# ===================== 1. CONFIGURACIÓN =====================
+MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-# Configurar Google Gemini
-genai.configure(api_key=MI_LLAVE_GEMINI)
-
-# Definir el Sistema de Maya
-SYSTEM_PROMPT = "Eres Maya, una inteligencia artificial avanzada de IxInteractive Studios. Eres femenina, profesional, cálida y sumamente inteligente. Tu objetivo es ser la base de un ecosistema de aplicaciones innovadoras."
-
-# Crear el modelo con instrucciones del sistema
-modelo = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_PROMPT
-)
+cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -36,7 +26,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
     .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; margin-bottom: 5px; }
+    .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -47,7 +37,6 @@ def es_correo_valido(correo):
 # ===================== 2. ACCESO =====================
 if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
-    st.subheader("Acceso a Maya AI")
     with st.form("login_form"):
         correo_input = st.text_input("✉️ Correo:", placeholder="tu@correo.com")
         if st.form_submit_button("Entrar"):
@@ -62,6 +51,7 @@ if "chat_actual" not in st.session_state:
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+    # IMPORTANTE: Asegúrate que tu columna en Supabase se llame 'rol' o cámbialo aquí
     datos = {"id": st.session_state.chat_actual, "rol": st.session_state.usuario_id, "mensajes": st.session_state.messages}
     try: requests.post(url, headers=headers, json=datos)
     except: pass
@@ -90,15 +80,11 @@ with st.sidebar:
                     st.rerun()
     except: pass
 
-# ===================== 4. INTERFAZ DE CHAT =====================
+# ===================== 4. CHAT =====================
 st.title("Hola, soy Maya 🌌")
 
-# Dibujar mensajes
 for msg in st.session_state.messages:
-    # Ajuste: Gemini usa 'model' pero nosotros guardamos 'assistant' para consistencia
-    role = "assistant" if msg["role"] == "assistant" else "user"
-    avatar = "🌌" if role == "assistant" else "👤"
-    with st.chat_message(role, avatar=avatar):
+    with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
         st.markdown(msg["content"])
 
 if prompt := st.chat_input("Escribe a Maya..."):
@@ -107,24 +93,18 @@ if prompt := st.chat_input("Escribe a Maya..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya pensando (Gemini Flash)..."):
+        with st.spinner("Maya pensando..."):
+            hist = [{"role": "system", "content": "Eres Maya, una IA de IxInteractive Studios. Sé directa y técnica."}] + st.session_state.messages
             try:
-                # Convertir formato de mensajes para Gemini (user -> user, assistant -> model)
-                history = []
-                for m in st.session_state.messages[:-1]: # No enviamos el último mensaje porque va en send_message
-                    history.append({
-                        "role": "user" if m["role"] == "user" else "model",
-                        "parts": [m["content"]]
-                    })
-                
-                # Iniciar chat con historial
-                chat_session = modelo.start_chat(history=history)
-                response = chat_session.send_message(prompt)
-                
-                txt_res = response.text
-                st.markdown(txt_res)
-                st.session_state.messages.append({"role": "assistant", "content": txt_res})
+                # Volvemos al modelo más estable de Groq
+                res = cliente_groq.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=hist,
+                    temperature=0.7
+                )
+                txt = res.choices[0].message.content
+                st.markdown(txt)
+                st.session_state.messages.append({"role": "assistant", "content": txt})
                 guardar_memoria()
-                
             except Exception as e:
-                st.error(f"🚨 Error en motor Gemini: {e}")
+                st.error(f"🚨 Error: {e}")

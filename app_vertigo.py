@@ -1,16 +1,24 @@
 import streamlit as st
 import json
 import requests
-import re
+import hashlib
 from datetime import datetime
 from groq import Groq
+import google.generativeai as genai
+from PIL import Image
+import io
 
-# ===================== 1. CONFIGURACIÓN Y LLAVES =====================
+# ===================== 1. CONFIGURACIÓN DE MOTORES =====================
+# Llaves desde Secrets
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
+MI_LLAVE_GEMINI = st.secrets["MI_LLAVE_GEMINI"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
+# Inicializar Clientes
 cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
+genai.configure(api_key=MI_LLAVE_GEMINI)
+modelo_vision = genai.GenerativeModel('gemini-1.5-flash') # Gemini 3 Flash (vía API)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -19,141 +27,109 @@ headers = {
     "Prefer": "resolution=merge-duplicates"
 }
 
-st.set_page_config(page_title="Maya | IxInteractive", page_icon="🌌", layout="centered")
+# ===================== 2. CACHÉ Y PROCESAMIENTO =====================
 
-# Estética Profesional IxInteractive
-st.markdown("""
-    <style>
-    .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; margin-bottom: 5px; }
-    </style>
-    """, unsafe_allow_html=True)
+def obtener_hash_imagen(imagen_bytes):
+    """Genera una huella única para no analizar la misma imagen dos veces."""
+    return hashlib.md5(imagen_bytes).hexdigest()
 
-# Validación de Correo
-def es_correo_valido(correo):
-    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(patron, correo) is not None
+def preprocesar_imagen(archivo):
+    """Redimensiona y comprime para ahorrar ancho de banda."""
+    img = Image.open(archivo)
+    # Redimensionar si es muy grande
+    img.thumbnail((512, 512))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=70)
+    return buf.getvalue()
 
-# ===================== 2. SISTEMA DE ACCESO =====================
-if "usuario_id" not in st.session_state:
-    st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
-    st.subheader("Acceso a Maya AI")
-    
-    with st.form("login_form"):
-        correo_input = st.text_input("✉️ Correo electrónico:", placeholder="tu@correo.com")
-        if st.form_submit_button("Iniciar Sesión", use_container_width=True):
-            correo_limpio = correo_input.strip().lower()
-            if es_correo_valido(correo_limpio):
-                st.session_state.usuario_id = correo_limpio
-                st.rerun()
-            else:
-                st.error("🚨 Por favor, ingresa un correo válido.")
-    st.stop()
-
-# Inicialización de sesión
-if "chat_actual" not in st.session_state:
-    st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-    st.session_state.messages = []
-
-def guardar_memoria():
-    """Sincroniza el chat con las columnas 'id', 'rol' y 'mensajes' de Supabase."""
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    datos = {
-        "id": st.session_state.chat_actual,
-        "rol": st.session_state.usuario_id,  # Mapeado a tu columna 'rol' en Supabase
-        "mensajes": st.session_state.messages
-    }
+def consultar_vision(imagen_bytes):
+    """Gemini 3 Flash: Traduce imagen a texto corto."""
     try:
-        requests.post(url, headers=headers, json=datos)
-    except:
-        pass
+        # Prompt de optimización
+        prompt_vision = "Describe esta imagen de forma técnica y breve (máx 50 palabras). Si es hardware, identifica componentes."
+        # Preparar para Gemini
+        contenido = [prompt_vision, {"mime_type": "image/jpeg", "data": imagen_bytes}]
+        res = modelo_vision.generate_content(contenido)
+        return res.text
+    except Exception as e:
+        return f"[Error de visión: {e}]"
 
-# ===================== 3. SIDEBAR (HISTORIAL DE CHATS) =====================
-with st.sidebar:
-    st.title("👤 Mi Perfil")
-    st.caption(f"Conectado: **{st.session_state.usuario_id}**")
+# ===================== 3. LÓGICA DE MAYA (ROUTER) =====================
+
+def maya_router(texto, imagen_archivo=None):
+    """Decide el flujo según la entrada del usuario."""
+    descripcion_visual = ""
     
-    col_n, col_s = st.columns(2)
-    with col_n:
-        if st.button("➕ Nuevo", use_container_width=True):
-            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-            st.session_state.messages = []
-            st.rerun()
-    with col_s:
-        if st.button("🚪 Salir", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-            
-    st.markdown("---")
-    st.subheader("📂 Chats Guardados")
-    
-    try:
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        params = {
-            "rol": f"eq.{st.session_state.usuario_id}", 
-            "select": "id,mensajes",
-            "order": "id.desc"
-        }
-        res_db = requests.get(url_get, headers=headers, params=params)
+    if imagen_archivo:
+        # Paso 1: Preprocesar
+        img_bytes = preprocesar_imagen(imagen_archivo)
+        img_hash = obtener_hash_imagen(img_bytes)
         
-        if res_db.status_code == 200:
-            chats = res_db.json()
-            for chat in chats:
-                id_c = chat["id"]
-                label = id_c.replace("Chat_", "").replace("_", " ")
-                
-                c_btn, c_del = st.columns([4, 1])
-                with c_btn:
-                    if st.button(f"💬 {label[:14]}", key=f"L_{id_c}", use_container_width=True):
-                        st.session_state.chat_actual = id_c
-                        st.session_state.messages = chat.get("mensajes", [])
-                        st.rerun()
-                with c_del:
-                    if st.button("🗑️", key=f"D_{id_c}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
-                        st.rerun()
-    except:
-        st.caption("Conectando con historial...")
+        # Paso 2: Verificar Caché (Simplificado en session_state por ahora)
+        if "cache_vision" not in st.session_state:
+            st.session_state.cache_vision = {}
+            
+        if img_hash in st.session_state.cache_vision:
+            descripcion_visual = st.session_state.cache_vision[img_hash]
+            st.toast("Imagen recuperada de caché ⚡")
+        else:
+            with st.spinner("Maya está observando..."):
+                descripcion_visual = consultar_vision(img_bytes)
+                st.session_state.cache_vision[img_hash] = descripcion_visual
+                st.toast("Análisis visual completado 👁️")
 
-# ===================== 4. INTERFAZ DE CHAT =====================
-st.title("Hola, soy Maya 🌌")
-st.caption(f"🛡️ IxInteractive Studios | ID: {st.session_state.chat_actual}")
+    # Paso 3: Construir Contexto para LLaMA
+    prompt_final = texto
+    if descripcion_visual:
+        prompt_final = f"[CONTEXTO VISUAL: {descripcion_visual}]\n\nUsuario dice: {texto}"
 
-SYSTEM_PROMPT = """
-Eres Maya, una inteligencia artificial avanzada de IxInteractive Studios. 
-Eres femenina, profesional, cálida y sumamente inteligente. 
-Tu objetivo es ser la base de un ecosistema de aplicaciones innovadoras.
-"""
+    # Paso 4: Razonamiento con LLaMA 3.3
+    try:
+        historial = [{"role": "system", "content": "Eres Maya de IxInteractive. Sé directa, útil y técnica. Evita rodeos sentimentales."}]
+        # Solo enviamos los últimos 5 mensajes para ahorrar tokens y mantener foco
+        historial += st.session_state.messages[-5:] 
+        historial.append({"role": "user", "content": prompt_final})
+        
+        res = cliente_groq.chat.completions.create(
+            messages=historial,
+            model="llama-3.3-70b-versatile",
+            temperature=0.6, # Menos creatividad, más precisión
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        return f"🚨 Error en cerebro LLaMA: {e}"
 
+# ===================== 4. INTERFAZ STREAMLIT =====================
+
+st.title("Maya AI 🌌")
+st.caption("IxInteractive Hybrid Intelligence")
+
+# Subida de imagen (opcional)
+with st.sidebar:
+    st.subheader("🛠️ Panel de Entrada")
+    archivo_subido = st.file_uploader("Subir imagen (Análisis)", type=['jpg','png','jpeg'])
+    if st.button("Limpiar historial"):
+        st.session_state.messages = []
+        st.rerun()
+
+# Mostrar Chat
 for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"] == "user" else "🌌"
-    with st.chat_message(msg["role"], avatar=avatar):
+    with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Escribe tu mensaje..."):
+# Input de Usuario
+if prompt := st.chat_input("¿En qué puedo ayudarte?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
+    with st.chat_message("user"):
         st.markdown(prompt)
+        if archivo_subido:
+            st.image(archivo_subido, width=200)
 
-    with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Maya está pensando..."):
-            historial = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
-            
-            try:
-                res = cliente_groq.chat.completions.create(
-                    messages=historial,
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.75,
-                    max_tokens=1200
-                )
-                
-                full_response = res.choices[0].message.content
-                st.markdown(full_response)
-                
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-                guardar_memoria()
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"🚨 Error de motor: {str(e)}")
+    # Respuesta Híbrida
+    with st.chat_message("assistant"):
+        respuesta = maya_router(prompt, archivo_subido)
+        st.markdown(respuesta)
+        st.session_state.messages.append({"role": "assistant", "content": respuesta})
+        
+        # Sincronizar con Supabase (Tu función ya existente)
+        # guardar_memoria()

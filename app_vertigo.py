@@ -26,7 +26,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
     .stChatMessage { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; }
+    .main-header { font-size: 2.5rem; font-weight: 700; color: #a5d6ff; text-align: center; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -39,10 +39,13 @@ if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive Studios</h1>', unsafe_allow_html=True)
     with st.form("login_form"):
         correo_input = st.text_input("✉️ Correo:", placeholder="tu@correo.com")
-        if st.form_submit_button("Entrar"):
-            if es_correo_valido(correo_input.strip()):
-                st.session_state.usuario_id = correo_input.strip().lower()
+        if st.form_submit_button("Entrar", use_container_width=True):
+            correo_limpio = correo_input.strip().lower()
+            if es_correo_valido(correo_limpio):
+                st.session_state.usuario_id = correo_limpio
                 st.rerun()
+            else:
+                st.error("🚨 Ingresa un correo válido.")
     st.stop()
 
 if "chat_actual" not in st.session_state:
@@ -51,37 +54,66 @@ if "chat_actual" not in st.session_state:
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    # IMPORTANTE: Asegúrate que tu columna en Supabase se llame 'rol' o cámbialo aquí
-    datos = {"id": st.session_state.chat_actual, "rol": st.session_state.usuario_id, "mensajes": st.session_state.messages}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
+    # Mapeo exacto a tu tabla: id, rol, mensajes
+    datos = {
+        "id": st.session_state.chat_actual, 
+        "rol": st.session_state.usuario_id, 
+        "mensajes": st.session_state.messages
+    }
+    try:
+        requests.post(url, headers=headers, json=datos)
+    except:
+        pass
 
-# ===================== 3. SIDEBAR =====================
+# ===================== 3. SIDEBAR (HISTORIAL + BORRAR) =====================
 with st.sidebar:
     st.title("👤 Perfil")
-    st.caption(f"Usuario: {st.session_state.usuario_id}")
-    if st.button("➕ Nuevo Chat", use_container_width=True):
-        st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-        st.session_state.messages = []
-        st.rerun()
+    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
+    
+    col_n, col_s = st.columns(2)
+    with col_n:
+        if st.button("➕ Nuevo", use_container_width=True):
+            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
+            st.session_state.messages = []
+            st.rerun()
+    with col_s:
+        if st.button("🚪 Salir", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
     
     st.markdown("---")
-    st.subheader("📂 Historial")
+    st.subheader("📂 Chats Guardados")
+    
     try:
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        url_api = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
         params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
-        res_db = requests.get(url_get, headers=headers, params=params)
+        res_db = requests.get(url_api, headers=headers, params=params)
+        
         if res_db.status_code == 200:
-            for chat in res_db.json():
-                label = chat['id'].replace("Chat_", "").replace("_", " ")
-                if st.button(f"💬 {label[:12]}", key=chat['id'], use_container_width=True):
-                    st.session_state.chat_actual = chat['id']
-                    st.session_state.messages = chat['mensajes']
-                    st.rerun()
-    except: pass
+            chats = res_db.json()
+            for chat in chats:
+                id_c = chat['id']
+                label = id_c.replace("Chat_", "").replace("_", " ")
+                
+                col_btn, col_del = st.columns([4, 1])
+                with col_btn:
+                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
+                        st.session_state.chat_actual = id_c
+                        st.session_state.messages = chat.get("mensajes", [])
+                        st.rerun()
+                with col_del:
+                    # REINTEGRADO: Botón de borrar con conexión a Supabase
+                    if st.button("🗑️", key=f"D_{id_c}"):
+                        requests.delete(url_api, headers=headers, params={"id": f"eq.{id_c}"})
+                        st.toast(f"Chat eliminado", icon="🗑️")
+                        st.rerun()
+    except:
+        st.caption("Conectando con historial...")
 
-# ===================== 4. CHAT =====================
+# ===================== 4. INTERFAZ DE CHAT =====================
 st.title("Hola, soy Maya 🌌")
+
+SYSTEM_PROMPT = "Eres Maya, una IA avanzada de IxInteractive Studios. Eres técnica, directa y eficiente."
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
@@ -94,9 +126,8 @@ if prompt := st.chat_input("Escribe a Maya..."):
 
     with st.chat_message("assistant", avatar="🌌"):
         with st.spinner("Maya pensando..."):
-            hist = [{"role": "system", "content": "Eres Maya, una IA de IxInteractive Studios. Sé directa y técnica."}] + st.session_state.messages
+            hist = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.messages
             try:
-                # Volvemos al modelo más estable de Groq
                 res = cliente_groq.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=hist,

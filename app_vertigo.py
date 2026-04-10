@@ -3,7 +3,7 @@ import requests
 import re
 from datetime import datetime
 from groq import Groq
-from tavily import TavilyClient # <--- El nuevo estándar
+from tavily import TavilyClient
 
 # ===================== 1. CONFIGURACIÓN =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
@@ -27,26 +27,30 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
     .stApp { background: radial-gradient(circle at top right, #1a1f2e, #0d1117); font-family: 'Inter', sans-serif; color: #c9d1d9; }
-    .main-header { font-size: 3rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #ffffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; }
-    [data-testid="stChatMessage"] { background: rgba(22, 27, 34, 0.6) !important; backdrop-filter: blur(8px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 16px !important; }
+    .main-header { font-size: 3rem; font-weight: 700; background: linear-gradient(90deg, #a5d6ff, #ffffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 20px;}
+    [data-testid="stChatMessage"] { background: rgba(22, 27, 34, 0.6) !important; backdrop-filter: blur(8px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 16px !important; margin-bottom: 10px; }
     .fuente-link { display: inline-block; background: rgba(165, 214, 255, 0.1); color: #a5d6ff; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; text-decoration: none; margin-right: 8px; border: 1px solid rgba(165, 214, 255, 0.3); }
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 3. MOTOR DE BÚSQUEDA TAVILY =====================
+# ===================== 3. LÓGICA DE INVESTIGACIÓN =====================
+
+def es_saludo(texto):
+    # Detecta si es solo un saludo corto para no perder tiempo buscando en web
+    palabras = texto.lower().strip().split()
+    saludos = ["hola", "buenos", "dias", "tardes", "noches", "hey", "que tal", "saludos"]
+    return len(palabras) <= 2 and any(s in texto.lower() for s in saludos)
 
 def investigar_web(query):
+    if es_saludo(query):
+        return None, ""
     try:
-        # Tavily busca, resume y extrae links automáticamente
         respuesta = tavily.search(query=query, search_depth="advanced", max_results=3)
-        contexto = ""
-        links = []
-        for i, res in enumerate(respuesta['results']):
-            contexto += f"\n- {res['content']}\n"
-            links.append(f"<a class='fuente-link' href='{res['url']}' target='_blank'>🔗 Fuente {i+1}</a>")
-        return contexto, "".join(links)
+        contexto = "\n".join([f"- {res['content']}" for res in respuesta['results']])
+        links = "".join([f"<a class='fuente-link' href='{res['url']}' target='_blank'>🔗 Fuente {i+1}</a>" for i, res in enumerate(respuesta['results'])])
+        return contexto, links
     except:
-        return "No se encontraron datos actualizados.", ""
+        return "No hay conexión a la red de datos.", ""
 
 # ===================== 4. ACCESO =====================
 if "usuario_id" not in st.session_state:
@@ -67,50 +71,51 @@ if "chat_id" not in st.session_state:
 # ===================== 5. INTERFAZ =====================
 st.markdown('<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 
-# Dibujar historial
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
-if prompt := st.chat_input("¿Qué investigamos hoy?"):
+if prompt := st.chat_input("¿En qué trabajamos hoy?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Consultando bases de datos en tiempo real..."):
-            # 1. Investigar
-            datos_web, links_html = investigar_web(prompt)
-            
-            # 2. Inyectar Contexto (Aquí está el truco: se lo damos como "Hechos")
-            PROMPT_FINAL = f"""
-            FECHA ACTUAL: 9 de Abril de 2026.
-            INFORMACIÓN RECUPERADA DE LA WEB:
-            {datos_web}
+        # 1. ¿Necesita buscar en web?
+        if es_saludo(prompt):
+            with st.spinner("Conectando..."):
+                final_prompt = f"Eres Maya de IxInteractive. El usuario te saluda con '{prompt}'. Responde de forma breve y profesional."
+                links_html = ""
+        else:
+            with st.spinner("Investigando en tiempo real (2026)..."):
+                datos_web, links_html = investigar_web(prompt)
+                final_prompt = f"""
+                FECHA: 9 de Abril de 2026. 
+                Eres Maya de IxInteractive Studios.
+                DATOS WEB RECUPERADOS: {datos_web}
+                INSTRUCCIÓN: Responde a '{prompt}' usando los datos de arriba. Sé directa.
+                """
 
-            INSTRUCCIÓN: Basándote ÚNICAMENTE en la información de arriba, responde a la duda: "{prompt}". 
-            Si la información contiene resultados deportivos o noticias de 2026, dálos con absoluta seguridad.
-            """
+        # 2. Llamada a Groq
+        try:
+            res = cliente_groq.chat.completions.create(
+                messages=[{"role": "user", "content": final_prompt}],
+                model="llama-3.3-70b-versatile",
+                temperature=0.3
+            )
+            txt = res.choices[0].message.content
+            if links_html:
+                txt += f"\n\n<div style='border-top: 1px solid #30363d; padding-top:10px;'>{links_html}</div>"
             
-            try:
-                res = cliente_groq.chat.completions.create(
-                    messages=[{"role": "user", "content": PROMPT_FINAL}],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.1
-                )
-                txt = res.choices[0].message.content
-                if links_html:
-                    txt += f"\n\n<div style='border-top: 1px solid #30363d; padding-top:10px;'>{links_html}</div>"
-                
-                st.markdown(txt, unsafe_allow_html=True)
-                st.session_state.messages.append({"role": "assistant", "content": txt})
-                
-                # Guardar en Supabase
-                url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-                requests.post(url, headers=headers, json={
-                    "id": st.session_state.chat_id, 
-                    "mensajes": st.session_state.messages, 
-                    "rol": st.session_state.usuario_id
-                })
-            except Exception as e:
-                st.error(f"Falla de motor: {e}")
+            st.markdown(txt, unsafe_allow_html=True)
+            st.session_state.messages.append({"role": "assistant", "content": txt})
+            
+            # Guardar
+            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+            requests.post(url, headers=headers, json={
+                "id": st.session_state.chat_id, 
+                "mensajes": st.session_state.messages, 
+                "rol": st.session_state.usuario_id
+            })
+        except Exception as e:
+            st.error(f"Error de sistema: {e}")

@@ -81,24 +81,49 @@ def guardar_memoria():
 with st.sidebar:
     st.image("https://via.placeholder.com/160x160/1f2a44/58a6ff?text=🌌+Maya", width=140)
     st.title("Maya AI")
-    st.caption(f"Usuario: **{st.session_state.usuario_id}**")
+    st.caption(f"Operador: **{st.session_state.usuario_id}**")
     
     col_n, col_s = st.columns(2)
     with col_n:
-        if st.button("➕ Nuevo Chat", use_container_width=True):
-            guardar_memoria()                    # Guarda antes de crear nuevo
+        if st.button("➕ Nuevo", use_container_width=True):
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with col_s:
-        if st.button("🚪 Cerrar Sesión", use_container_width=True):
-            guardar_memoria()
+        if st.button("🚪 Salir", use_container_width=True):
             st.session_state.clear()
             st.rerun()
-    
+            
     st.markdown("---")
-    st.subheader("📂 Chats Guardados")
-    st.caption("Pronto disponible")
+    st.subheader("📂 Historial de Chats")
+    
+    try:
+        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
+        res_db = requests.get(url_get, headers=headers, params=params)
+        
+        if res_db.status_code == 200:
+            chats = res_db.json()
+            for chat in chats:
+                id_c = chat["id"]
+                label = id_c.replace("Chat_", "").replace("_", " ")
+                col_b, col_d = st.columns([4, 1])
+                with col_b:
+                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
+                        st.session_state.chat_actual = id_c
+                        st.session_state.messages = chat.get("mensajes", [])
+                        st.rerun()
+                with col_d:
+                    if st.button("🗑️", key=f"D_{id_c}"):
+                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
+                        if st.session_state.chat_actual == id_c:
+                            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
+                            st.session_state.messages = []
+                        st.rerun()
+        else:
+            st.sidebar.warning("Aún no tienes chats guardados.")
+    except:
+        st.sidebar.error("Error conectando con la DB")
 
 # ===================== CHAT PRINCIPAL =====================
 st.markdown('<h1 class="main-header">Hola, soy Maya 🌌</h1>', unsafe_allow_html=True)
@@ -112,7 +137,7 @@ for msg in st.session_state.messages:
         if msg.get("image"):
             st.image(msg["image"], width=380)
 
-# Entrada del usuario
+# ===================== ENTRADA DEL USUARIO =====================
 if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_file=True, file_type=["jpg", "png", "jpeg"]):
     img_url = None
     txt_u = prompt.text if hasattr(prompt, "text") else str(prompt)
@@ -120,12 +145,12 @@ if prompt := st.chat_input("Escribe tu mensaje o sube una imagen...", accept_fil
     if prompt.files:
         try:
             img = Image.open(prompt.files[0])
-            img.thumbnail((1024, 1024))           # Reducir tamaño para ahorrar tokens
+            img.thumbnail((1024, 1024))        # Reducimos tamaño para ahorrar tokens
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=75)
             img_url = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
-        except:
-            st.error("No se pudo procesar la imagen")
+        except Exception as e:
+            st.error(f"Error procesando imagen: {e}")
 
     st.session_state.messages.append({"role": "user", "content": txt_u, "image": img_url})
     st.rerun()
@@ -149,10 +174,10 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
 
             txt_res = None
 
-            # Primero intentamos Gemini (mejor para visión)
+            # Primero intentamos con Gemini (mejor para visión)
             try:
                 res = cliente_gemini.chat.completions.create(
-                    model="gemini-2.5-flash",      # Cambia a "gemini-1.5-flash" si no funciona
+                    model="gemini-2.5-flash",   # Puedes cambiar a "gemini-1.5-flash" si da error
                     messages=hist,
                     temperature=0.7,
                     max_tokens=1200
@@ -161,16 +186,18 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             except:
                 # Fallback a Groq
                 try:
+                    # Para Groq convertimos el historial a formato texto simple
+                    simple_hist = [{"role": h["role"], "content": h["content"]} 
+                                   for h in hist if isinstance(h.get("content"), str)]
                     res = cliente_groq.chat.completions.create(
-                        messages=[{"role": h["role"], "content": h["content"]} 
-                                  for h in hist if isinstance(h["content"], str)],
+                        messages=simple_hist,
                         model="llama-3.3-70b-versatile",
                         temperature=0.7,
                         max_tokens=1200
                     )
                     txt_res = res.choices[0].message.content
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"Error al procesar: {str(e)}")
 
             if txt_res:
                 st.markdown(txt_res)

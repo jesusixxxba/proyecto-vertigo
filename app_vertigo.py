@@ -14,11 +14,7 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
-headers = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json"
-}
+headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
 
 st.set_page_config(page_title="Maya AI", page_icon="🌌", layout="centered")
 
@@ -33,16 +29,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 3. LÓGICA DE INVESTIGACIÓN =====================
+# ===================== 3. LÓGICA DE FILTRADO =====================
 
-def es_saludo(texto):
-    # Detecta si es solo un saludo corto para no perder tiempo buscando en web
-    palabras = texto.lower().strip().split()
-    saludos = ["hola", "buenos", "dias", "tardes", "noches", "hey", "que tal", "saludos"]
-    return len(palabras) <= 2 and any(s in texto.lower() for s in saludos)
+def es_charla_ligera(texto):
+    # Detecta saludos, agradecimientos o confirmaciones simples
+    texto = texto.lower().strip()
+    # Lista de frases que NO requieren búsqueda en web
+    patrones = [
+        r"^(hola|hey|buenas|buenos dias|buenas tardes|buenas noches)$",
+        r"^(gracias|muchas gracias|ty|thx)$",
+        r"^(ok|vale|perfecto|entendido|muy bien|bien|excelente|genial)$",
+        r"^(como estas|quien eres|que tal)$"
+    ]
+    return any(re.match(p, texto) for p in patrones) or len(texto.split()) <= 2
 
 def investigar_web(query):
-    if es_saludo(query):
+    if es_charla_ligera(query):
         return None, ""
     try:
         respuesta = tavily.search(query=query, search_depth="advanced", max_results=3)
@@ -50,7 +52,7 @@ def investigar_web(query):
         links = "".join([f"<a class='fuente-link' href='{res['url']}' target='_blank'>🔗 Fuente {i+1}</a>" for i, res in enumerate(respuesta['results'])])
         return contexto, links
     except:
-        return "No hay conexión a la red de datos.", ""
+        return "No hay conexión a la red.", ""
 
 # ===================== 4. ACCESO =====================
 if "usuario_id" not in st.session_state:
@@ -81,27 +83,27 @@ if prompt := st.chat_input("¿En qué trabajamos hoy?"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🌌"):
-        # 1. ¿Necesita buscar en web?
-        if es_saludo(prompt):
-            with st.spinner("Conectando..."):
-                final_prompt = f"Eres Maya de IxInteractive. El usuario te saluda con '{prompt}'. Responde de forma breve y profesional."
-                links_html = ""
+        charla = es_charla_ligera(prompt)
+        
+        if charla:
+            # Respuesta rápida y natural para charla ligera
+            final_prompt = f"Eres Maya de IxInteractive. El usuario dice: '{prompt}'. Responde de forma muy breve, natural y amable como una asistente técnica real. No definas palabras ni traduzcas."
+            links_html = ""
         else:
-            with st.spinner("Investigando en tiempo real (2026)..."):
+            # Investigación profunda para temas reales
+            with st.spinner("Investigando datos de 2026..."):
                 datos_web, links_html = investigar_web(prompt)
                 final_prompt = f"""
-                FECHA: 9 de Abril de 2026. 
-                Eres Maya de IxInteractive Studios.
-                DATOS WEB RECUPERADOS: {datos_web}
-                INSTRUCCIÓN: Responde a '{prompt}' usando los datos de arriba. Sé directa.
+                FECHA: 10 de Abril de 2026.
+                CONTEXTO WEB: {datos_web}
+                INSTRUCCIÓN: Responde a '{prompt}' usando el contexto. Sé técnica y directa.
                 """
 
-        # 2. Llamada a Groq
         try:
             res = cliente_groq.chat.completions.create(
                 messages=[{"role": "user", "content": final_prompt}],
                 model="llama-3.3-70b-versatile",
-                temperature=0.3
+                temperature=0.4
             )
             txt = res.choices[0].message.content
             if links_html:
@@ -110,12 +112,9 @@ if prompt := st.chat_input("¿En qué trabajamos hoy?"):
             st.markdown(txt, unsafe_allow_html=True)
             st.session_state.messages.append({"role": "assistant", "content": txt})
             
-            # Guardar
-            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-            requests.post(url, headers=headers, json={
-                "id": st.session_state.chat_id, 
-                "mensajes": st.session_state.messages, 
-                "rol": st.session_state.usuario_id
+            # Guardar en Supabase
+            requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats", headers=headers, json={
+                "id": st.session_state.chat_id, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id
             })
         except Exception as e:
-            st.error(f"Error de sistema: {e}")
+            st.error(f"Falla de sistema: {e}")

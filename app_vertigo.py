@@ -4,204 +4,93 @@ import requests
 import re
 from datetime import datetime
 from groq import Groq
+from streamlit_mic_recorder import mic_recorder # <--- Nuevos oídos
 
-# ===================== 1. CONFIGURACIÓN Y LLAVES =====================
+# ===================== 1. CONFIGURACIÓN =====================
 MI_LLAVE_GROQ = st.secrets["MI_LLAVE_GROQ"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 cliente_groq = Groq(api_key=MI_LLAVE_GROQ)
 
-headers = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "resolution=merge-duplicates"
-}
+st.set_page_config(page_title="Maya AI", page_icon="🌌", layout="centered")
 
-st.set_page_config(page_title="Maya AI | IxInteractive", page_icon="🌌", layout="centered")
-
-# ===================== 2. ESTÉTICA PREMIUM =====================
+# ===================== 2. ESTÉTICA Y VOZ (JS) =====================
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
-    
-    .stApp {
-        background: radial-gradient(circle at top right, #1a1f2e, #0d1117);
-        font-family: 'Inter', sans-serif;
-        color: #c9d1d9;
-    }
-
-    .main-header {
-        font-size: 3rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #a5d6ff, #ffffff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 10px;
-        filter: drop-shadow(0px 4px 10px rgba(165, 214, 255, 0.3));
-    }
-
-    [data-testid="stChatMessage"] {
-        background: rgba(22, 27, 34, 0.6) !important;
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(48, 54, 61, 0.8);
-        border-radius: 16px !important;
-        padding: 20px !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        margin-bottom: 15px;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #010409 !important;
-        border-right: 1px solid #30363d;
-    }
-
-    #ir-abajo {
-        position: fixed;
-        bottom: 90px;
-        right: 40px;
-        z-index: 1000;
-        background: rgba(31, 41, 55, 0.8);
-        backdrop-filter: blur(4px);
-        color: #a5d6ff;
-        width: 45px;
-        height: 45px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        text-decoration: none;
-        border: 1px solid rgba(165, 214, 255, 0.4);
-        transition: all 0.3s ease;
-    }
-    #ir-abajo:hover {
-        transform: translateY(-5px);
-        background: #a5d6ff;
-        color: #0d1117;
-    }
-
-    footer {visibility: hidden;}
+    .stApp { background: radial-gradient(circle at top right, #1a1f2e, #0d1117); color: #c9d1d9; }
+    [data-testid="stChatMessage"] { background: rgba(22, 27, 34, 0.6) !important; backdrop-filter: blur(8px); border-radius: 16px !important; }
+    /* Estilo para el botón del micro */
+    .mic-container { display: flex; justify-content: center; margin-bottom: 10px; }
     </style>
+    
+    <script>
+    function leerEnVozAlta(texto) {
+        const mensaje = new SpeechSynthesisUtterance(texto);
+        mensaje.lang = 'es-MX'; // Voz en español
+        mensaje.rate = 1.1;     // Velocidad ligeramente más humana
+        window.speechSynthesis.speak(mensaje);
+    }
+    </script>
     """, unsafe_allow_html=True)
 
-def es_correo_valido(correo):
-    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(patron, correo) is not None
+# Función para disparar la voz desde Python
+def maya_habla(texto):
+    texto_limpio = texto.replace('"', "'").replace("\n", " ")
+    st.markdown(f"""<script>leerEnVozAlta("{texto_limpio}")</script>""", unsafe_allow_html=True)
 
-# ===================== 3. SISTEMA DE ACCESO =====================
-if "usuario_id" not in st.session_state:
-    st.markdown('<h1 class="main-header">IxInteractive</h1>', unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8b949e;'>Diseñado para precisión quirúrgica</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        with st.form("login_form"):
-            correo_input = st.text_input("✉️ Credencial de acceso:", placeholder="usuario@ixinteractive.com")
-            if st.form_submit_button("Sincronizar Sistema", use_container_width=True):
-                correo_limpio = correo_input.strip().lower()
-                if es_correo_valido(correo_limpio):
-                    st.session_state.usuario_id = correo_limpio
-                    st.rerun()
-                else:
-                    st.error("🚨 Acceso denegado: Credencial inválida.")
-    st.stop()
+# ===================== 3. ACCESO Y LÓGICA =====================
+# (Mantener aquí tu código de login y Supabase igual que antes)
+if "messages" not in st.session_state: st.session_state.messages = []
 
-st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
+# ===================== 4. INTERFAZ DE VOZ Y TEXTO =====================
+st.markdown('<h1 style="text-align:center;">Maya AI 🌌</h1>', unsafe_allow_html=True)
 
-if "chat_actual" not in st.session_state:
-    st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-    st.session_state.messages = []
+# --- EL MICRÓFONO ---
+st.write("---")
+st.markdown('<p style="text-align:center; color:#8b949e;">Pulsa para hablar con Maya</p>', unsafe_allow_html=True)
+col_mic, _ = st.columns([1, 4])
+with col_mic:
+    audio = mic_recorder(start_prompt="🎤 Hablar", stop_prompt="🛑 Detener", key="mic")
 
-def guardar_memoria():
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
-    try: requests.post(url, headers=headers, json=datos)
-    except: pass
-
-# ===================== 4. SIDEBAR =====================
-with st.sidebar:
-    st.title("Panel de Control")
-    st.caption(f"Operador: **{st.session_state.usuario_id}**")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("➕ Nuevo", use_container_width=True):
-            st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
-            st.session_state.messages = []
-            st.rerun()
-    with c2:
-        if st.button("🚪 Salir", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-            
-    st.markdown("---")
-    st.subheader("📂 Historial de Chats")
-    
-    try:
-        url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-        params = {"rol": f"eq.{st.session_state.usuario_id}", "select": "id,mensajes", "order": "id.desc"}
-        res_db = requests.get(url_get, headers=headers, params=params)
-        
-        if res_db.status_code == 200:
-            for chat in res_db.json():
-                id_c = chat["id"]
-                label = id_c.replace("Chat_", "").replace("_", " ")
-                col_b, col_d = st.columns([4, 1])
-                with col_b:
-                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
-                        st.session_state.chat_actual = id_c
-                        st.session_state.messages = chat.get("mensajes", [])
-                        st.rerun()
-                with col_d:
-                    if st.button("🗑️", key=f"D_{id_c}"):
-                        requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
-                        st.rerun()
-    except:
-        st.caption("Error de enlace...")
-
-# ===================== 5. INTERFAZ DE CHAT =====================
-st.markdown(f'<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
-
-# PROMPT ACTUALIZADO PARA MODO BETA
-SYSTEM_PROMPT = """
-Eres Maya, una inteligencia artificial técnica y avanzada de IxInteractive Studios.
-REGLA CRÍTICA: Actualmente te encuentras en FASE BETA. 
-No tienes acceso a internet en tiempo real, navegación web, resultados deportivos en vivo o enlaces externos actualizados. 
-Si el usuario solicita enlaces, noticias de hoy o datos en tiempo real, informa amablemente que Maya está en fase Beta y que el módulo de navegación está en mantenimiento o desarrollo. 
-Tu especialidad es la asistencia técnica, lógica y programación con tu base de conocimientos actual.
-"""
-
-if not st.session_state.messages:
-    with st.chat_message("assistant", avatar="🌌"):
-        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿En qué puedo ayudarte hoy?")
-
+# Dibujar historial
 for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"] == "user" else "🌌"
-    with st.chat_message(msg["role"], avatar=avatar):
+    with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🌌"):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Escribe una instrucción..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
+# --- PROCESAR ENTRADA (VOZ O TEXTO) ---
+input_usuario = None
 
+# Si el usuario usó el micro
+if audio:
+    # Aquí usamos el motor Whisper de Groq para convertir audio a texto (STT)
+    # Nota: requiere guardar el audio temporalmente o enviarlo como bytes
+    st.info("Maya está transcribiendo tu voz...")
+    # Por ahora, para la Beta, podemos usar la transcripción nativa si tu sistema lo permite
+    # o integrar el modelo Whisper de Groq aquí.
+
+# Si el usuario escribe
+if prompt := st.chat_input("Escribe una instrucción..."):
+    input_usuario = prompt
+
+if input_usuario:
+    st.session_state.messages.append({"role": "user", "content": input_usuario})
+    st.rerun()
+
+# Respuesta de Maya
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🌌"):
-        with st.spinner("Procesando..."):
-            hist = [{'role': 'system', 'content': SYSTEM_PROMPT}] + st.session_state.messages
+        with st.spinner("Maya procesando..."):
             try:
-                res = cliente_groq.chat.completions.create(
-                    messages=hist,
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.7
-                )
+                hist = [{"role": "system", "content": "Eres Maya. Responde de forma breve para que la lectura de voz sea fluida."}] + st.session_state.messages
+                res = cliente_groq.chat.completions.create(messages=hist, model="llama-3.3-70b-versatile")
                 txt = res.choices[0].message.content
+                
                 st.markdown(txt)
                 st.session_state.messages.append({"role": "assistant", "content": txt})
-                guardar_memoria()
+                
+                # ¡MAYA HABLA!
+                maya_habla(txt)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
-
-st.markdown('<div id="ultimo-mensaje"></div>', unsafe_allow_html=True)

@@ -21,10 +21,9 @@ headers = {
 
 st.set_page_config(page_title="Maya AI | IxInteractive", page_icon="🌌", layout="centered")
 
-# ===================== 2. ESTÉTICA DE ELITE (CSS) =====================
+# ===================== 2. ESTÉTICA PREMIUM (CSS CORREGIDO) =====================
 st.markdown("""
     <style>
-    /* Fondo General y Tipografía */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
     
     .stApp {
@@ -33,7 +32,6 @@ st.markdown("""
         color: #c9d1d9;
     }
 
-    /* Títulos con Brillo */
     .main-header {
         font-size: 3rem;
         font-weight: 700;
@@ -45,7 +43,6 @@ st.markdown("""
         filter: drop-shadow(0px 4px 10px rgba(165, 214, 255, 0.3));
     }
 
-    /* Burbujas de Chat (Glassmorphism) */
     [data-testid="stChatMessage"] {
         background: rgba(22, 27, 34, 0.6) !important;
         backdrop-filter: blur(8px);
@@ -56,13 +53,12 @@ st.markdown("""
         margin-bottom: 15px;
     }
 
-    /* Sidebar Refinado */
+    /* Ajuste de Sidebar para que sea visible */
     [data-testid="stSidebar"] {
         background-color: #010409 !important;
         border-right: 1px solid #30363d;
     }
 
-    /* Botón Flotante de Scroll (Elegante) */
     #ir-abajo {
         position: fixed;
         bottom: 90px;
@@ -85,78 +81,65 @@ st.markdown("""
         transform: translateY(-5px);
         background: #a5d6ff;
         color: #0d1117;
-        box-shadow: 0 0 20px rgba(165, 214, 255, 0.5);
     }
 
-    /* Ocultar barra de Streamlit */
-    #MainMenu {visibility: hidden;}
+    /* Quitamos el bloqueo del header para que aparezca el botón de la sidebar */
     footer {visibility: hidden;}
-    header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- Validación de Correo ---
 def es_correo_valido(correo):
     patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return re.match(patron, correo) is not None
 
-# ===================== 3. SISTEMA DE ACCESO =====================
+# ===================== 3. SISTEMA DE ACCESO (ESPAÑOL) =====================
 if "usuario_id" not in st.session_state:
     st.markdown('<h1 class="main-header">IxInteractive</h1>', unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8b949e;'>Engineered for surgical precision</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8b949e;'>Diseñado para precisión quirúrgica</p>", unsafe_allow_html=True)
     
-    with st.container():
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            with st.form("login_form"):
-                correo_input = st.text_input("✉️ Credencial de acceso:", placeholder="usuario@ixinteractive.com")
-                if st.form_submit_button("Sincronizar", use_container_width=True):
-                    correo_limpio = correo_input.strip().lower()
-                    if es_correo_valido(correo_limpio):
-                        st.session_state.usuario_id = correo_limpio
-                        st.rerun()
-                    else:
-                        st.error("🚨 Acceso denegado: Correo inválido.")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("login_form"):
+            correo_input = st.text_input("✉️ Credencial de acceso:", placeholder="usuario@ixinteractive.com")
+            if st.form_submit_button("Sincronizar Sistema", use_container_width=True):
+                correo_limpio = correo_input.strip().lower()
+                if es_correo_valido(correo_limpio):
+                    st.session_state.usuario_id = correo_limpio
+                    st.rerun()
+                else:
+                    st.error("🚨 Acceso denegado: Credencial inválida.")
     st.stop()
 
-# Mostrar botón de bajada solo si está logueado
 st.markdown('<a id="ir-abajo" href="#ultimo-mensaje">▼</a>', unsafe_allow_html=True)
 
-# Inicialización de sesión
 if "chat_actual" not in st.session_state:
     st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
     st.session_state.messages = []
 
 def guardar_memoria():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
-    datos = {
-        "id": st.session_state.chat_actual,
-        "mensajes": st.session_state.messages,
-        "rol": st.session_state.usuario_id 
-    }
-    try:
-        requests.post(url, headers=headers, json=datos)
-    except:
-        pass
+    datos = {"id": st.session_state.chat_actual, "mensajes": st.session_state.messages, "rol": st.session_state.usuario_id}
+    try: requests.post(url, headers=headers, json=datos)
+    except: pass
 
-# ===================== 4. SIDEBAR (DASHBOARD) =====================
+# ===================== 4. SIDEBAR (LOGS DE SISTEMA) =====================
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/galaxy.png", width=60)
-    st.title("Control Panel")
-    st.caption(f"Operator: **{st.session_state.usuario_id}**")
+    st.title("Panel de Control")
+    st.caption(f"Operador: **{st.session_state.usuario_id}**")
     
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("➕ New", use_container_width=True):
+        if st.button("➕ Nuevo", use_container_width=True):
             st.session_state.chat_actual = datetime.now().strftime("Chat_%Y%m%d_%H%M%S")
             st.session_state.messages = []
             st.rerun()
     with c2:
-        if st.button("🚪 Exit", use_container_width=True):
+        if st.button("🚪 Salir", use_container_width=True):
             st.session_state.clear()
             st.rerun()
             
-    st.markdown("<br><p style='font-size: 0.8rem; color: #8b949e;'>SYSTEM LOGS</p>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.subheader("📂 Historial de Chats")
     
     try:
         url_get = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
@@ -167,36 +150,33 @@ with st.sidebar:
             for chat in res_db.json():
                 id_c = chat["id"]
                 label = id_c.replace("Chat_", "").replace("_", " ")
-                col_btn, col_del = st.columns([5, 1])
-                with col_btn:
-                    if st.button(f"● {label[:10]}", key=f"L_{id_c}", use_container_width=True):
+                col_b, col_d = st.columns([4, 1])
+                with col_b:
+                    if st.button(f"💬 {label[:12]}", key=f"L_{id_c}", use_container_width=True):
                         st.session_state.chat_actual = id_c
                         st.session_state.messages = chat.get("mensajes", [])
                         st.rerun()
-                with col_del:
-                    if st.button("×", key=f"D_{id_c}"):
+                with col_d:
+                    if st.button("🗑️", key=f"D_{id_c}"):
                         requests.delete(url_get, headers=headers, params={"id": f"eq.{id_c}"})
                         st.rerun()
     except:
-        st.caption("Link offline...")
+        st.caption("Error de enlace...")
 
 # ===================== 5. INTERFAZ DE CHAT =====================
 st.markdown(f'<h1 class="main-header">Maya AI</h1>', unsafe_allow_html=True)
 
-SYSTEM_PROMPT = "Eres Maya, una IA de IxInteractive Studios. Responde con precisión técnica y brevedad profesional."
+SYSTEM_PROMPT = "Eres Maya, una IA de IxInteractive Studios. Técnica y eficiente."
 
-# Saludo inicial refinado
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar="🌌"):
-        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿Cuál es el objetivo de hoy?")
+        st.markdown("👋 **Sistemas listos.** Soy Maya. ¿En qué puedo ayudarte hoy?")
 
-# Mensajes
 for msg in st.session_state.messages:
     avatar = "👤" if msg["role"] == "user" else "🌌"
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# Input con estilo
 if prompt := st.chat_input("Escribe una instrucción..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
@@ -211,12 +191,12 @@ if prompt := st.chat_input("Escribe una instrucción..."):
                     model="llama-3.3-70b-versatile",
                     temperature=0.7
                 )
-                full_response = res.choices[0].message.content
-                st.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                txt = res.choices[0].message.content
+                st.markdown(txt)
+                st.session_state.messages.append({"role": "assistant", "content": txt})
                 guardar_memoria()
                 st.rerun()
             except Exception as e:
-                st.error(f"Hardware Error: {e}")
+                st.error(f"Error: {e}")
 
 st.markdown('<div id="ultimo-mensaje"></div>', unsafe_allow_html=True)
